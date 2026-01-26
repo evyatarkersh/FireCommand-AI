@@ -2,6 +2,8 @@ from flask import Blueprint, jsonify
 from app.extensions import db
 from app.models.test_model import TestLog
 from sqlalchemy import text
+from app.agents.nasa_agent import NasaIngestionService
+from app.agents.open_weather_map_agent import WeatherService
 
 # יצירת ה-Blueprint
 api = Blueprint('api', __name__)
@@ -44,3 +46,29 @@ def init_db():
         })
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)})
+
+@api.route('/test-nasa')
+def test_nasa():
+    # 1. יצירת המופע של הסרביס
+    service = NasaIngestionService()
+
+    # 2. קריאה לפונקציה
+    fires_data = service.fetch_and_save_fires(days_back=5)
+
+    # 3. החזרת התוצאה למסך כ-JSON
+    return jsonify({
+        "data": fires_data
+    })
+@api.route('/test-owm')
+def test_owm():
+    # 1. יצירת המופע של הסרביס
+    service = WeatherService()
+
+    # 2. קריאה לפונקציה
+    success = service.update_weather_for_event(1)
+
+    # 3. החזרת תשובה לדפדפן כדי שנדע מה קרה
+    if success:
+        return jsonify({"status": "success", "message": "Weather updated for Event #1"}), 200
+    else:
+        return jsonify({"status": "error", "message": "Failed. Does Event #1 exist in DB?"}), 400
