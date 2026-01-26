@@ -1,2 +1,12 @@
 /venv
 .env
+test_apis.py
+generate_station.py
+ims_meta_data.xlsx
+ims_metadata.csv
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
