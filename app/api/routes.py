@@ -9,6 +9,7 @@ from app.agents.nasa_agent import NasaIngestionService
 from app.agents.open_weather_map_agent import WeatherService
 from app.agents.IMS_DATA_agent import fetch_weather_by_location
 from app.agents.topo_agent import fetch_and_save_topography
+from app.agents.monitor_agent import MonitorAgent
 
 # יצירת ה-Blueprint
 api = Blueprint('api', __name__)
@@ -130,4 +131,25 @@ def test_agents_integration():
             "status": "error",
             "message": "Integration test failed",
             "details": str(e)
+        }), 500
+
+
+@api.route('/run-monitor', methods=['GET'])
+def run_monitor():
+    try:
+        # 1. יצירת הסוכן
+        agent = MonitorAgent()
+
+        # 2. הרצת המחזור (Clustering + Weather Enrichment)
+        agent.run_cycle()
+
+        return jsonify({
+            "status": "success",
+            "message": "Monitor cycle finished successfully."
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
         }), 500
