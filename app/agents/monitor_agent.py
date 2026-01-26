@@ -6,6 +6,7 @@ from app.models.nasa_fire import FireIncident
 from app.agents.open_weather_map_agent import WeatherService
 from app.agents.topo_agent import fetch_and_save_topography
 from app.agents.IMS_DATA_agent import fetch_weather_by_location
+from app.agents.fuel_agent import fetch_and_save_fuel_type
 
 
 class MonitorAgent:
@@ -76,6 +77,7 @@ class MonitorAgent:
             self.weather_service.update_weather_for_event(event.id)
             fetch_and_save_topography(event.latitude, event.longitude, event.id)
             fetch_weather_by_location(event.latitude, event.longitude, event.id)
+            fetch_and_save_fuel_type(event.latitude, event.longitude, event.id)
 
 
             # ב. טופוגרפיה (כשנממש את הסוכן, נקרא לו כאן)
