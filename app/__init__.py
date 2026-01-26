@@ -22,6 +22,8 @@ def create_app():
 
     # יצירת טבלאות אוטומטית (אם לא קיימות)
     with app.app_context():
+        from app.models.nasa_fire import FireIncident  # וודא שזה שם הקובץ הנכון
+        from app.models.fire_events import FireEvent
         db.create_all()
 
     return app
