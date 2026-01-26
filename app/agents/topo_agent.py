@@ -13,7 +13,7 @@ def fetch_and_save_topography(lat, lon, fire_event_id):
     print(f"⛰️ Topo Agent: מנתח שטח לאירוע {fire_event_id}...")
     
     try:
-        # 1. חישוב טופוגרפי (כמו שעשינו קודם)
+        # 1. חישוב טופוגרפי
         offset = 0.0003 
         points = [f"{lat},{lon}", f"{lat+offset},{lon}", f"{lat-offset},{lon}", f"{lat},{lon+offset}", f"{lat},{lon-offset}"]
         
@@ -46,13 +46,27 @@ def fetch_and_save_topography(lat, lon, fire_event_id):
     except Exception as e:
         print(f"❌ Topo Error: {e}")
 
+def ensure_topo_columns(cur):
+    """בודק אם עמודות הטופוגרפיה קיימות ויוצר אותן אם לא."""
+    columns = [
+        ("topo_elevation", "FLOAT"),
+        ("topo_slope", "FLOAT"),
+        ("topo_aspect", "FLOAT")
+    ]
+    for col_name, col_type in columns:
+        cur.execute(f"ALTER TABLE fire_events ADD COLUMN IF NOT EXISTS {col_name} {col_type};")
+
 def update_topo_record(fire_id, elev, slope, aspect):
     if not DB_URL: return
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
         
-        # השאילתה המעודכנת - מכניסה לעמודות topo_*
+        # --- תוספת: וידוא קיום עמודות ---
+        ensure_topo_columns(cur)
+        # -------------------------------
+
+        # השאילתה המעודכנת
         cur.execute("""
             UPDATE fire_events 
             SET 

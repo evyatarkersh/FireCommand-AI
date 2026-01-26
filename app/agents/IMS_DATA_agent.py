@@ -58,11 +58,26 @@ def fetch_and_update_db(station_id, fire_event_id):
 
         print(f"   🌤️ נתונים: Temp={data['temp']}, Wind={data['wind_speed']}, Gust={data['wind_gust']}")
 
-        # 3. עדכון הטבלה המאוחדת (UPDATE)
+        # 3. עדכון הטבלה המאוחדת
         update_fire_record(fire_event_id, station_id, data)
 
     except Exception as e:
         print(f"❌ IMS Error: {e}")
+
+def ensure_ims_columns(cur):
+    """בודק אם עמודות מזג האוויר קיימות ויוצר אותן אם לא."""
+    columns = [
+        ("ims_station_id", "INTEGER"),
+        ("ims_temp", "FLOAT"),
+        ("ims_humidity", "FLOAT"),
+        ("ims_wind_speed", "FLOAT"),
+        ("ims_wind_dir", "INTEGER"),
+        ("ims_wind_gust", "FLOAT"),
+        ("ims_rain", "FLOAT"),
+        ("ims_radiation", "FLOAT")
+    ]
+    for col_name, col_type in columns:
+        cur.execute(f"ALTER TABLE fire_events ADD COLUMN IF NOT EXISTS {col_name} {col_type};")
 
 def update_fire_record(fire_id, station_id, data):
     if not DB_URL: return
@@ -70,7 +85,11 @@ def update_fire_record(fire_id, station_id, data):
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
         
-        # השאילתה המעודכנת - מכניסה לעמודות ims_*
+        # --- תוספת: וידוא קיום עמודות ---
+        ensure_ims_columns(cur)
+        # -------------------------------
+        
+        # השאילתה המעודכנת
         cur.execute("""
             UPDATE fire_events
             SET 
