@@ -5,11 +5,13 @@ from sqlalchemy import text
 from app.agents.nasa_agent import NasaIngestionService
 from app.agents.open_weather_map_agent import WeatherService
 
+# --- ייבוא הסוכנים החדשים ---
 from app.agents.nasa_agent import NasaIngestionService
 from app.agents.open_weather_map_agent import WeatherService
-from app.agents.IMS_DATA_agent import fetch_weather_by_location
-from app.agents.topo_agent import fetch_and_save_topography
 from app.agents.monitor_agent import MonitorAgent
+from app.agents.topo_agent import enrich_with_topography
+from app.agents.fuel_agent import enrich_with_fuel
+from app.agents.IMS_DATA_agent import enrich_with_ims
 
 # יצירת ה-Blueprint
 api = Blueprint('api', __name__)
@@ -80,58 +82,6 @@ def test_owm():
         return jsonify({"status": "error", "message": "Failed. Does Event #1 exist in DB?"}), 400
     
     
-# --- 🔥 הבדיקה החדשה: אינטגרציה מלאה (IMS + Topo) ---
-@api.route('/test-agents')
-def test_agents_integration():
-    """
-    בדיקה שמריצה את כל המעגל:
-    יצירת שריפה -> IMS -> Topo -> הצגת התוצאה
-    """
-    try:
-        # 1. יצירת שריפה פיקטיבית בכרמל (באמצעות SQL ישיר כי אין לנו עדיין מודל SQLAlchemy לזה)
-        # אנחנו משתמשים ב-db.session כדי ליהנות מהחיבור הקיים של Flask
-        lat, lon = 32.79, 35.01
-        
-        insert_query = text("""
-            INSERT INTO fire_events (latitude, longitude, status) 
-            VALUES (:lat, :lon, 'RENDER_TEST') 
-            RETURNING id
-        """)
-        
-        result = db.session.execute(insert_query, {'lat': lat, 'lon': lon})
-        db.session.commit() # חובה כדי שהסוכנים יוכלו לראות את ה-ID הזה
-        fire_id = result.fetchone()[0]
-        
-        print(f"🔥 Created test fire ID: {fire_id}")
-
-        # 2. הפעלת סוכן IMS (מזג אוויר ישראלי)
-        # הסוכנים שלנו עובדים עם psycopg2 עצמאי, זה בסדר גמור
-        fetch_weather_by_location(lat, lon, fire_id)
-        
-        # 3. הפעלת סוכן טופוגרפיה
-        fetch_and_save_topography(lat, lon, fire_id)
-
-        # 4. שליפת התוצאה המלאה לבדיקה
-        select_query = text("SELECT * FROM fire_events WHERE id = :id")
-        row_result = db.session.execute(select_query, {'id': fire_id})
-        
-        # המרה ידנית של השורה למילון (כי זה Raw SQL)
-        row = row_result.fetchone()
-        columns = row_result.keys()
-        data_dict = dict(zip(columns, row))
-
-        return jsonify({
-            "status": "success",
-            "message": "Full integration cycle complete",
-            "fire_data": data_dict
-        })
-
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": "Integration test failed",
-            "details": str(e)
-        }), 500
 
 
 @api.route('/run-monitor', methods=['GET'])
