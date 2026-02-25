@@ -1,118 +1,94 @@
 import requests
-import psycopg2
 import os
 from dotenv import load_dotenv
+# אני מניח שהקובץ הזה קיים אצלך ועובד, כי הוא רק עושה חישוב מתמטי/גיאוגרפי
 from app.services.ims_stations_service import get_nearest_station
 
 load_dotenv()
-DB_URL = os.getenv("DATABASE_URL")
 IMS_TOKEN = os.getenv("IMS_TOKEN")
 IMS_BASE_URL = "https://api.ims.gov.il/v1/envista/stations"
 
-def fetch_weather_by_location(lat, lon, fire_event_id):
-    """מקבל נ.צ. ו-ID, מוצא תחנה, מביא נתונים ומעדכן את רשומת השריפה."""
-    print(f"🕵️ IMS Agent: מתחיל עבודה על אירוע {fire_event_id}...")
+def enrich_with_ims(fire_event):
+    """
+    מקבל אובייקט שריפה (FireEvent).
+    1. מוצא את התחנה המטאורולוגית הקרובה ביותר.
+    2. מושך נתונים מה-API של השירות המטאורולוגי.
+    3. מעדכן את האובייקט בזיכרון (ללא Commit).
+    """
+    print(f"🕵️ IMS Agent: Working on Event #{fire_event.id}...")
 
-    # 1. איתור תחנה
-    station = get_nearest_station(lat, lon)
-    station_id = station['id']
-    print(f"   📍 תחנה נבחרת: {station['name']} (ID: {station_id})")
-    
-    # 2. הבאת נתונים ושמירה
-    fetch_and_update_db(station_id, fire_event_id)
-
-def fetch_and_update_db(station_id, fire_event_id):
     if not IMS_TOKEN:
-        print("❌ Error: טוקן חסר.")
+        print("❌ IMS Agent Error: Token is missing.")
         return
 
-    url = f"{IMS_BASE_URL}/{station_id}/data/latest"
-    headers = {"Authorization": f"ApiToken {IMS_TOKEN}"}
-
     try:
-        response = requests.get(url, headers=headers)
-        if response.status_code != 200: return
+        # 1. שליפת מיקום מהאובייקט
+        lat = fire_event.latitude
+        lon = fire_event.longitude
+
+        # 2. איתור תחנה קרובה (לוגיקה חיצונית קיימת)
+        station = get_nearest_station(lat, lon)
+        if not station:
+            print("⚠️ IMS Agent: No station found nearby.")
+            return
+            
+        station_id = station['id']
+        print(f"   📍 Nearest Station: {station['name']} (ID: {station_id})")
+
+        # 3. קריאה ל-API
+        url = f"{IMS_BASE_URL}/{station_id}/data/latest"
+        headers = {"Authorization": f"ApiToken {IMS_TOKEN}"}
+        
+        # Timeout של 10 שניות כדי לא לתקוע את המוניטור
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code != 200:
+            print(f"⚠️ IMS API Error: Status {response.status_code}")
+            return
 
         json_response = response.json()
-        if "data" not in json_response or not json_response["data"]: return
+        if "data" not in json_response or not json_response["data"]:
+            print("⚠️ IMS API returned empty data.")
+            return
 
         latest = json_response["data"][0]
-        
-        # איסוף הנתונים
-        data = {
-            "temp": None, "humidity": None, "wind_speed": None, "wind_dir": None,
-            "rain": 0.0, "wind_gust": None, "radiation": None
-        }
+        channels = latest.get("channels", [])
 
-        for channel in latest.get("channels", []):
+        # 4. מיפוי הנתונים (Parsing) - עדכון ישיר לאובייקט
+        # שים לב: אנחנו מאפסים את הנתונים באובייקט לפני המילוי
+        fire_event.ims_station_id = station_id
+        
+        # משתנים זמניים למילוי (כדי לשמור על הלוגיקה המקורית)
+        # Rain מקבל 0.0 כברירת מחדל, השאר None
+        rain_val = 0.0
+        
+        for channel in channels:
             name = channel.get("name")
             val = channel.get("value")
             
-            if name == "TD": data["temp"] = val
-            elif name == "RH": data["humidity"] = val
-            elif name == "WS": data["wind_speed"] = val
-            elif name == "WD": data["wind_dir"] = val
-            elif name == "Rain": data["rain"] = val
-            elif name == "WSmax": data["wind_gust"] = val
-            elif name == "Grad": data["radiation"] = val
+            if val is not None:
+                if name == "TD":
+                    fire_event.ims_temp = val
+                elif name == "RH":
+                    fire_event.ims_humidity = val
+                elif name == "WS":
+                    fire_event.ims_wind_speed = val
+                elif name == "WD":
+                    fire_event.ims_wind_dir = int(val) # המרה ל-int לכיוון
+                elif name == "Rain":
+                    rain_val = val
+                elif name == "WSmax":
+                    fire_event.ims_wind_gust = val
+                elif name == "Grad":
+                    fire_event.ims_radiation = val
 
-        print(f"   🌤️ נתונים: Temp={data['temp']}, Wind={data['wind_speed']}, Gust={data['wind_gust']}")
+        # עדכון הגשם (בנפרד כי יש לו ברירת מחדל 0)
+        fire_event.ims_rain = rain_val
 
-        # 3. עדכון הטבלה המאוחדת
-        update_fire_record(fire_event_id, station_id, data)
+        print(f"✅ IMS Updated locally: Temp={fire_event.ims_temp}, Wind={fire_event.ims_wind_speed}")
 
     except Exception as e:
-        print(f"❌ IMS Error: {e}")
+        # תופסים שגיאות רשת/קוד כדי לא להפיל את המוניטור
+        print(f"⚠️ IMS Agent Failed (Skipping): {e}")
 
-def ensure_ims_columns(cur):
-    """בודק אם עמודות מזג האוויר קיימות ויוצר אותן אם לא."""
-    columns = [
-        ("ims_station_id", "INTEGER"),
-        ("ims_temp", "FLOAT"),
-        ("ims_humidity", "FLOAT"),
-        ("ims_wind_speed", "FLOAT"),
-        ("ims_wind_dir", "INTEGER"),
-        ("ims_wind_gust", "FLOAT"),
-        ("ims_rain", "FLOAT"),
-        ("ims_radiation", "FLOAT")
-    ]
-    for col_name, col_type in columns:
-        cur.execute(f"ALTER TABLE fire_events ADD COLUMN IF NOT EXISTS {col_name} {col_type};")
-
-def update_fire_record(fire_id, station_id, data):
-    if not DB_URL: return
-    try:
-        conn = psycopg2.connect(DB_URL)
-        cur = conn.cursor()
-        
-        # --- תוספת: וידוא קיום עמודות ---
-        ensure_ims_columns(cur)
-        # -------------------------------
-        
-        # השאילתה המעודכנת
-        cur.execute("""
-            UPDATE fire_events
-            SET 
-                ims_station_id = %s,
-                ims_temp = %s,
-                ims_humidity = %s,
-                ims_wind_speed = %s,
-                ims_wind_dir = %s,
-                ims_wind_gust = %s,
-                ims_rain = %s,
-                ims_radiation = %s
-            WHERE id = %s
-        """, (
-            station_id, 
-            data['temp'], data['humidity'], data['wind_speed'], data['wind_dir'], 
-            data['wind_gust'], data['rain'], data['radiation'],
-            fire_id
-        ))
-        
-        conn.commit()
-        cur.close()
-        conn.close()
-        print(f"✅ נתוני IMS עודכנו ברשומה המאוחדת (ID: {fire_id})")
-        
-    except Exception as e:
-        print(f"❌ DB Update Error: {e}")
+# אין צורך בפונקציות ensure_columns או update_db SQL ידני

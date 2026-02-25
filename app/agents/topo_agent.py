@@ -1,36 +1,58 @@
 import requests
-import psycopg2
-import os
 import math
-from dotenv import load_dotenv
 
-load_dotenv()
-DB_URL = os.getenv("DATABASE_URL")
+# כתובת ה-API החיצוני
 TOPO_API_URL = "https://api.opentopodata.org/v1/srtm30m"
 
-def fetch_and_save_topography(lat, lon, fire_event_id):
-    """מנתח שטח ומעדכן את רשומת השריפה בטבלה המאוחדת."""
-    print(f"⛰️ Topo Agent: מנתח שטח לאירוע {fire_event_id}...")
-    
+def enrich_with_topography(fire_event):
+    """
+    מקבל אובייקט שריפה (FireEvent), פונה ל-API, ומעדכן את השדות באובייקט.
+    הפונקציה עובדת בזיכרון (In-Memory) ולא מבצעת Commit ל-DB.
+    """
+    print(f"⛰️ Topo Agent: Working on Event #{fire_event.id}...")
+
     try:
-        # 1. חישוב טופוגרפי
+        # 1. שליפת הקואורדינטות מתוך האובייקט שכבר אצלנו ביד
+        lat = fire_event.latitude
+        lon = fire_event.longitude
+
+        # 2. הכנת הנקודות לחישוב (הלוגיקה המתמטית שלך נשארה זהה)
         offset = 0.0003 
-        points = [f"{lat},{lon}", f"{lat+offset},{lon}", f"{lat-offset},{lon}", f"{lat},{lon+offset}", f"{lat},{lon-offset}"]
+        points = [
+            f"{lat},{lon}", 
+            f"{lat+offset},{lon}", 
+            f"{lat-offset},{lon}", 
+            f"{lat},{lon+offset}", 
+            f"{lat},{lon-offset}"
+        ]
         
-        response = requests.get(f"{TOPO_API_URL}?locations={'|'.join(points)}")
+        # פנייה ל-API עם Timeout (כדי לא לתקוע את המערכת)
+        response = requests.get(f"{TOPO_API_URL}?locations={'|'.join(points)}", timeout=10)
+        
+        if response.status_code != 200:
+            print(f"⚠️ Topo API Error: Status {response.status_code}")
+            return
+
         data = response.json()
-        
-        if 'results' not in data: return
+        if 'results' not in data:
+            print("⚠️ Topo API returned invalid JSON")
+            return
 
         elevations = [r['elevation'] for r in data['results']]
+        
+        # בדיקה שלא קיבלנו None (קורה לפעמים בים או מחוץ למפה)
+        if any(e is None for e in elevations):
+            print("⚠️ Topo API returned None for elevation values")
+            return
+
         z_center = elevations[0]
         
-        # חישובים
+        # חישוב שיפוע (Slope)
         dz_dx = (elevations[3] - elevations[4]) / 60.0
         dz_dy = (elevations[1] - elevations[2]) / 60.0
-        
         slope_deg = round(math.degrees(math.atan(math.sqrt(dz_dx**2 + dz_dy**2))), 1)
         
+        # חישוב מפנה (Aspect)
         aspect_deg = 0
         if dz_dx != 0:
             aspect_deg = math.degrees(math.atan2(dz_dy, -dz_dx))
@@ -38,48 +60,17 @@ def fetch_and_save_topography(lat, lon, fire_event_id):
             else: aspect_deg = 360 - aspect_deg + 90
             aspect_deg = round(aspect_deg % 360, 0)
 
-        print(f"   📐 תוצאות: Elev={z_center}, Slope={slope_deg}, Aspect={aspect_deg}")
+        # 3. עדכון האובייקט (החלק החשוב!)
+        # אנחנו לא עושים SQL UPDATE, אלא משנים את התכונות של האובייקט בזיכרון
+        fire_event.topo_elevation = z_center
+        fire_event.topo_slope = slope_deg
+        fire_event.topo_aspect = aspect_deg
 
-        # 2. עדכון הטבלה המאוחדת
-        update_topo_record(fire_event_id, z_center, slope_deg, aspect_deg)
+        print(f"✅ Topo Updated locally: Elev={z_center}, Slope={slope_deg}")
 
     except Exception as e:
-        print(f"❌ Topo Error: {e}")
+        # אנחנו תופסים את השגיאה, מדפיסים אותה, וממשיכים הלאה.
+        # זה מבטיח שהמוניטור לא יקרוס גם אם ה-API של הטופוגרפיה למטה.
+        print(f"❌ Topo Agent Failed (Skipping): {e}")
 
-def ensure_topo_columns(cur):
-    """בודק אם עמודות הטופוגרפיה קיימות ויוצר אותן אם לא."""
-    columns = [
-        ("topo_elevation", "FLOAT"),
-        ("topo_slope", "FLOAT"),
-        ("topo_aspect", "FLOAT")
-    ]
-    for col_name, col_type in columns:
-        cur.execute(f"ALTER TABLE fire_events ADD COLUMN IF NOT EXISTS {col_name} {col_type};")
-
-def update_topo_record(fire_id, elev, slope, aspect):
-    if not DB_URL: return
-    try:
-        conn = psycopg2.connect(DB_URL)
-        cur = conn.cursor()
-        
-        # --- תוספת: וידוא קיום עמודות ---
-        ensure_topo_columns(cur)
-        # -------------------------------
-
-        # השאילתה המעודכנת
-        cur.execute("""
-            UPDATE fire_events 
-            SET 
-                topo_elevation = %s, 
-                topo_slope = %s, 
-                topo_aspect = %s
-            WHERE id = %s
-        """, (elev, slope, aspect, fire_id))
-        
-        conn.commit()
-        cur.close()
-        conn.close()
-        print(f"✅ נתוני Topo עודכנו ברשומה המאוחדת (ID: {fire_id})")
-        
-    except Exception as e:
-        print(f"❌ DB Update Error: {e}")
+# אין כאן פונקציות ensure_columns או update_db - זה תפקיד המודל והמוניטור!
