@@ -3,7 +3,7 @@ import os
 import time  # <--- הוספנו את ספריית הזמן להשהיות
 from dotenv import load_dotenv
 from app.services.ims_stations_service import get_nearest_station
-
+# this is dumy pr
 load_dotenv()
 IMS_TOKEN = os.getenv("IMS_TOKEN")
 IMS_BASE_URL = "https://api.ims.gov.il/v1/envista/stations"
