@@ -9,6 +9,7 @@ from app.agents.open_weather_map_agent import WeatherService
 from app.agents.topo_agent import enrich_with_topography
 from app.agents.IMS_DATA_agent import enrich_with_ims
 from app.agents.fuel_agent import enrich_with_fuel
+from concurrent.futures import ThreadPoolExecutor
 
 
 class MonitorAgent:
@@ -72,22 +73,11 @@ class MonitorAgent:
             print(f"❌ Monitor Error (Commit): {e}")
             return
 
-        print(f"🌍 Enriching {len(events_to_enrich)} events with external data...")
-        
-        for event in events_to_enrich:
-            # אנחנו מעבירים את האובייקט עצמו (event) ולא את ה-ID
-            
-            # א. מזג אוויר
-            self.weather_service.update_weather_for_event(event)
-            
-            # ב. טופוגרפיה
-            enrich_with_topography(event)
-            
-            # ג. נתוני IMS (תחנות)
-            enrich_with_ims(event)
-            
-            # ד. סוג דלק (קרקע)
-            enrich_with_fuel(event)
+        print(f"🌍 Enriching {len(events_to_enrich)} events in parallel...")
+
+        # שימוש ב-5 פועלים במקביל (אפשר להעלות ל-10 אם יש הרבה אירועים)
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            executor.map(self._enrich_single_event, events_to_enrich)
 
         # --- שינוי 3: שמירה מרוכזת בסוף (Unit of Work) ---
         try:
@@ -172,3 +162,17 @@ class MonitorAgent:
             dlon / 2) ** 2
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
         return R * c
+
+    def _enrich_single_event(self, event):
+        """מבצע את כל ההעשרות לאירוע בודד - לשימוש בתוך Thread"""
+        try:
+            # א. מזג אוויר
+            self.weather_service.update_weather_for_event(event)
+            # ב. טופוגרפיה
+            enrich_with_topography(event)
+            # ג. נתוני IMS
+            enrich_with_ims(event)
+            # ד. סוג דלק
+            enrich_with_fuel(event)
+        except Exception as e:
+            print(f"❌ Error enriching event #{event.id}: {e}")
