@@ -1,5 +1,6 @@
 import requests
 import os
+import time  # <--- הוספנו את ספריית הזמן להשהיות
 from dotenv import load_dotenv
 from app.services.ims_stations_service import get_nearest_station
 
@@ -8,9 +9,6 @@ IMS_TOKEN = os.getenv("IMS_TOKEN")
 IMS_BASE_URL = "https://api.ims.gov.il/v1/envista/stations"
 
 def enrich_with_ims(fire_event):
-    """
-    גרסה משופרת ועמידה יותר לשגיאות API
-    """
     print(f"🕵️ IMS Agent: Working on Event #{fire_event.id}...")
 
     if not IMS_TOKEN:
@@ -18,7 +16,7 @@ def enrich_with_ims(fire_event):
         return
 
     try:
-        # 1. איתור תחנה
+        # 1. איתור תחנה קרובה
         lat = fire_event.latitude
         lon = fire_event.longitude
         
@@ -28,73 +26,77 @@ def enrich_with_ims(fire_event):
             return
             
         station_id = station['id']
-        station_name = station['name'] # שומרים את השם להדפסה
-        
-        # 2. קריאה ל-API
+        station_name = station['name']
+
+        # 2. הכנת הבקשה עם "תחפושת" של דפדפן
         url = f"{IMS_BASE_URL}/{station_id}/data/latest"
-        headers = {"Authorization": f"ApiToken {IMS_TOKEN}"}
         
-        try:
-            response = requests.get(url, headers=headers, timeout=10)
-        except requests.exceptions.Timeout:
-            print(f"⚠️ IMS Timeout: Station {station_name} ({station_id}) took too long.")
-            return
-        except requests.exceptions.RequestException as e:
-            print(f"⚠️ IMS Connection Error: {e}")
-            return
-
-        # 3. בדיקות תקינות לפני פענוח (התיקון החשוב!)
-        if response.status_code == 204: # No Content
-            print(f"⚠️ IMS Empty: Station {station_name} ({station_id}) has no data (204).")
-            return
+        # אנחנו אומרים לשרת: "אנחנו לא סקריפט פייתון, אנחנו דפדפן כרום רגיל"
+        headers = {
+            "Authorization": f"ApiToken {IMS_TOKEN}",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+            "Referer": "https://ims.gov.il/"
+        }
         
-        if response.status_code != 200:
-            print(f"⚠️ IMS Error: Station {station_name} ({station_id}) returned status {response.status_code}")
-            return
-
-        # בדיקה שהתוכן לא ריק
-        if not response.content:
-            print(f"⚠️ IMS Error: Station {station_name} ({station_id}) returned empty body.")
-            return
-
-        try:
-            json_response = response.json()
-        except ValueError:
-            # כאן בדיוק קרתה השגיאה שלך קודם!
-            print(f"⚠️ IMS Parsing Error: Station {station_name} ({station_id}) returned invalid JSON.")
-            # הדפסה של התוכן הגולמי כדי שתבין מה חזר (אולי שגיאת HTML)
-            print(f"   -> Raw response: {response.text[:100]}...") 
-            return
-
-        if "data" not in json_response or not json_response["data"]:
-            print(f"⚠️ IMS Data Error: Station {station_name} ({station_id}) json has no 'data' field.")
-            return
-
-        latest = json_response["data"][0]
-        channels = latest.get("channels", [])
-
-        # 4. מיפוי הנתונים
-        fire_event.ims_station_id = station_id
+        # 3. מנגנון Retry חכם (ניסיון חוזר)
+        max_retries = 3
         
-        # איפוס נתונים
-        rain_val = 0.0
-        
-        for channel in channels:
-            name = channel.get("name")
-            val = channel.get("value")
-            
-            if val is not None:
-                if name == "TD": fire_event.ims_temp = val
-                elif name == "RH": fire_event.ims_humidity = val
-                elif name == "WS": fire_event.ims_wind_speed = val
-                elif name == "WD": fire_event.ims_wind_dir = int(val)
-                elif name == "Rain": rain_val = val
-                elif name == "WSmax": fire_event.ims_wind_gust = val
-                elif name == "Grad": fire_event.ims_radiation = val
+        for attempt in range(1, max_retries + 1):
+            try:
+                # --- ההשהיה הקריטית ---
+                # אנחנו מחכים 2 שניות לפני כל בקשה כדי לא להפעיל את ה"אזעקה" של השרת
+                time.sleep(2) 
+                
+                # Timeout מוגדל ל-25 שניות לשרתים איטיים
+                response = requests.get(url, headers=headers, timeout=25)
+                
+                # אם קיבלנו HTML (שגיאה) או סטטוס לא תקין
+                if response.status_code != 200 or response.text.strip().startswith("<"):
+                    print(f"   🔄 IMS Error (Attempt {attempt}/{max_retries}): Server blocked/failed. Retrying in 3s...")
+                    time.sleep(3) # מחכים יותר זמן לפני הניסיון הבא
+                    continue # מנסים שוב
 
-        fire_event.ims_rain = rain_val
+                # אם הגענו לפה, קיבלנו JSON תקין!
+                json_response = response.json()
+                
+                if "data" not in json_response or not json_response["data"]:
+                    print(f"⚠️ IMS Empty Data: Station {station_name}")
+                    return
 
-        print(f"✅ IMS Updated locally: Station={station_name}, Temp={fire_event.ims_temp}")
+                latest = json_response["data"][0]
+                channels = latest.get("channels", [])
+
+                # 4. מילוי הנתונים
+                fire_event.ims_station_id = station_id
+                
+                # איפוס משתנים
+                rain_val = 0.0 # ברירת מחדל לגשם
+                
+                for channel in channels:
+                    name = channel.get("name")
+                    val = channel.get("value")
+                    
+                    if val is not None:
+                        if name == "TD": fire_event.ims_temp = val
+                        elif name == "RH": fire_event.ims_humidity = val
+                        elif name == "WS": fire_event.ims_wind_speed = val
+                        elif name == "WD": fire_event.ims_wind_dir = int(val)
+                        elif name == "Rain": rain_val = val
+                        elif name == "WSmax": fire_event.ims_wind_gust = val
+                        elif name == "Grad": fire_event.ims_radiation = val
+
+                fire_event.ims_rain = rain_val
+
+                print(f"✅ IMS Updated: {station_name} ({fire_event.ims_temp}°C)")
+                return # יציאה מהפונקציה בהצלחה
+
+            except Exception as e:
+                print(f"⚠️ IMS Connection Warning (Attempt {attempt}): {e}")
+                time.sleep(2)
+
+        # אם יצאנו מהלולאה בלי להצליח
+        print(f"❌ IMS Failed after {max_retries} attempts for {station_name}")
 
     except Exception as e:
         print(f"❌ IMS General Error: {e}")
