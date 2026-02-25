@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, current_app
 from app.extensions import db
 from app.models.test_model import TestLog
 from sqlalchemy import text
@@ -88,7 +88,7 @@ def test_owm():
 def run_monitor():
     try:
         # 1. יצירת הסוכן
-        agent = MonitorAgent()
+        agent = MonitorAgent(current_app)
 
         # 2. הרצת המחזור (Clustering + Weather Enrichment)
         agent.run_cycle()
