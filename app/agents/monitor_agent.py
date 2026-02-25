@@ -13,8 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 
 class MonitorAgent:
-    def __init__(self, app):
-        self.app = app
+    def __init__(self):
         self.weather_service = WeatherService()
         self.CLUSTER_RADIUS_KM = 2.5
         self.EVENT_TIMEOUT_HOURS = 24
@@ -78,7 +77,7 @@ class MonitorAgent:
 
         # שימוש ב-5 פועלים במקביל (אפשר להעלות ל-10 אם יש הרבה אירועים)
         with ThreadPoolExecutor(max_workers=5) as executor:
-            list(executor.map(self._enrich_single_event, events_to_enrich))
+            executor.map(self._enrich_single_event, events_to_enrich)
 
         # --- שינוי 3: שמירה מרוכזת בסוף (Unit of Work) ---
         try:
@@ -165,20 +164,15 @@ class MonitorAgent:
         return R * c
 
     def _enrich_single_event(self, event):
-        """פונקציה שרצה בתוך Thread נפרד"""
-        # יצירת הקשר (Context) עבור כל חוט בנפרד
-        with self.app.app_context():
-            try:
-                # הוספת האובייקט ל-Session של החוט הנוכחי
-                # (SQLAlchemy דורש שכל חוט יעבוד עם ה-Session שלו)
-                db.session.add(event)
-
-                # הפעלת הסוכנים
-                self.weather_service.update_weather_for_event(event)
-                enrich_with_topography(event)
-                enrich_with_ims(event)
-                enrich_with_fuel(event)
-
-                print(f"✨ Event #{event.id} enriched successfully.")
-            except Exception as e:
-                print(f"❌ Thread Error for Event #{event.id}: {e}")
+        """מבצע את כל ההעשרות לאירוע בודד - לשימוש בתוך Thread"""
+        try:
+            # א. מזג אוויר
+            self.weather_service.update_weather_for_event(event)
+            # ב. טופוגרפיה
+            enrich_with_topography(event)
+            # ג. נתוני IMS
+            enrich_with_ims(event)
+            # ד. סוג דלק
+            enrich_with_fuel(event)
+        except Exception as e:
+            print(f"❌ Error enriching event #{event.id}: {e}")
