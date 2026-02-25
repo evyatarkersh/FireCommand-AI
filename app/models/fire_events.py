@@ -35,6 +35,25 @@ class FireEvent(db.Model):
     owm_wind_deg = db.Column(db.Integer)
     owm_temperature = db.Column(db.Float)
     owm_humidity = db.Column(db.Integer)
+    
+    # Topo Agent
+    topo_elevation = db.Column(db.Float)
+    topo_slope = db.Column(db.Float)
+    topo_aspect = db.Column(db.Float)
+    
+    # IMS Agent
+    ims_station_id = db.Column(db.Integer)
+    ims_temp = db.Column(db.Float)
+    ims_humidity = db.Column(db.Float)
+    ims_wind_speed = db.Column(db.Float)
+    ims_wind_dir = db.Column(db.Integer)
+    ims_wind_gust = db.Column(db.Float)
+    ims_rain = db.Column(db.Float)
+    ims_radiation = db.Column(db.Float)
+    
+    # Fuel Agent
+    fuel_type = db.Column(db.String(50))
+    fuel_load = db.Column(db.Float)
 
     # --- העשרה (טופוגרפיה - הכנה) ---
     elevation = db.Column(db.Float)

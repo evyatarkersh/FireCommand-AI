@@ -4,9 +4,11 @@ from app.extensions import db
 from app.models.fire_events import FireEvent
 from app.models.nasa_fire import FireIncident
 from app.agents.open_weather_map_agent import WeatherService
-from app.agents.topo_agent import fetch_and_save_topography
-from app.agents.IMS_DATA_agent import fetch_weather_by_location
-from app.agents.fuel_agent import fetch_and_save_fuel_type
+# --- שינוי 1: ייבוא הסוכנים החדשים (היעילים) ---
+from app.agents.open_weather_map_agent import WeatherService
+from app.agents.topo_agent import enrich_with_topography
+from app.agents.IMS_DATA_agent import enrich_with_ims
+from app.agents.fuel_agent import enrich_with_fuel
 
 
 class MonitorAgent:
@@ -70,19 +72,32 @@ class MonitorAgent:
             print(f"❌ Monitor Error (Commit): {e}")
             return
 
-        # 3. העשרה (מזג אוויר + טופוגרפיה)
         print(f"🌍 Enriching {len(events_to_enrich)} events with external data...")
+        
         for event in events_to_enrich:
+            # אנחנו מעבירים את האובייקט עצמו (event) ולא את ה-ID
+            
             # א. מזג אוויר
-            self.weather_service.update_weather_for_event(event.id)
-            fetch_and_save_topography(event.latitude, event.longitude, event.id)
-            fetch_weather_by_location(event.latitude, event.longitude, event.id)
-            fetch_and_save_fuel_type(event.latitude, event.longitude, event.id)
+            self.weather_service.update_weather_for_event(event)
+            
+            # ב. טופוגרפיה
+            enrich_with_topography(event)
+            
+            # ג. נתוני IMS (תחנות)
+            enrich_with_ims(event)
+            
+            # ד. סוג דלק (קרקע)
+            enrich_with_fuel(event)
 
-
-            # ב. טופוגרפיה (כשנממש את הסוכן, נקרא לו כאן)
-            # self.topography_service.update_elevation(event)
-
+        # --- שינוי 3: שמירה מרוכזת בסוף (Unit of Work) ---
+        try:
+            print("💾 Committing all changes to DB...")
+            db.session.commit()
+            print("✅ Monitor cycle finished and saved successfully.")
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ Monitor Error (Critical Commit Fail): {e}")
+            return
         # 4. הפעלת Prediction Agent
         self._trigger_prediction_agent(events_to_enrich)
 
