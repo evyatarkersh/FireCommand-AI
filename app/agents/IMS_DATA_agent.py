@@ -1,7 +1,6 @@
 import requests
 import os
 from dotenv import load_dotenv
-# אני מניח שהקובץ הזה קיים אצלך ועובד, כי הוא רק עושה חישוב מתמטי/גיאוגרפי
 from app.services.ims_stations_service import get_nearest_station
 
 load_dotenv()
@@ -10,10 +9,7 @@ IMS_BASE_URL = "https://api.ims.gov.il/v1/envista/stations"
 
 def enrich_with_ims(fire_event):
     """
-    מקבל אובייקט שריפה (FireEvent).
-    1. מוצא את התחנה המטאורולוגית הקרובה ביותר.
-    2. מושך נתונים מה-API של השירות המטאורולוגי.
-    3. מעדכן את האובייקט בזיכרון (ללא Commit).
+    גרסה משופרת ועמידה יותר לשגיאות API
     """
     print(f"🕵️ IMS Agent: Working on Event #{fire_event.id}...")
 
@@ -22,44 +18,65 @@ def enrich_with_ims(fire_event):
         return
 
     try:
-        # 1. שליפת מיקום מהאובייקט
+        # 1. איתור תחנה
         lat = fire_event.latitude
         lon = fire_event.longitude
-
-        # 2. איתור תחנה קרובה (לוגיקה חיצונית קיימת)
+        
         station = get_nearest_station(lat, lon)
         if not station:
             print("⚠️ IMS Agent: No station found nearby.")
             return
             
         station_id = station['id']
-        print(f"   📍 Nearest Station: {station['name']} (ID: {station_id})")
-
-        # 3. קריאה ל-API
+        station_name = station['name'] # שומרים את השם להדפסה
+        
+        # 2. קריאה ל-API
         url = f"{IMS_BASE_URL}/{station_id}/data/latest"
         headers = {"Authorization": f"ApiToken {IMS_TOKEN}"}
         
-        # Timeout של 10 שניות כדי לא לתקוע את המוניטור
-        response = requests.get(url, headers=headers, timeout=10)
-        
-        if response.status_code != 200:
-            print(f"⚠️ IMS API Error: Status {response.status_code}")
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+        except requests.exceptions.Timeout:
+            print(f"⚠️ IMS Timeout: Station {station_name} ({station_id}) took too long.")
+            return
+        except requests.exceptions.RequestException as e:
+            print(f"⚠️ IMS Connection Error: {e}")
             return
 
-        json_response = response.json()
+        # 3. בדיקות תקינות לפני פענוח (התיקון החשוב!)
+        if response.status_code == 204: # No Content
+            print(f"⚠️ IMS Empty: Station {station_name} ({station_id}) has no data (204).")
+            return
+        
+        if response.status_code != 200:
+            print(f"⚠️ IMS Error: Station {station_name} ({station_id}) returned status {response.status_code}")
+            return
+
+        # בדיקה שהתוכן לא ריק
+        if not response.content:
+            print(f"⚠️ IMS Error: Station {station_name} ({station_id}) returned empty body.")
+            return
+
+        try:
+            json_response = response.json()
+        except ValueError:
+            # כאן בדיוק קרתה השגיאה שלך קודם!
+            print(f"⚠️ IMS Parsing Error: Station {station_name} ({station_id}) returned invalid JSON.")
+            # הדפסה של התוכן הגולמי כדי שתבין מה חזר (אולי שגיאת HTML)
+            print(f"   -> Raw response: {response.text[:100]}...") 
+            return
+
         if "data" not in json_response or not json_response["data"]:
-            print("⚠️ IMS API returned empty data.")
+            print(f"⚠️ IMS Data Error: Station {station_name} ({station_id}) json has no 'data' field.")
             return
 
         latest = json_response["data"][0]
         channels = latest.get("channels", [])
 
-        # 4. מיפוי הנתונים (Parsing) - עדכון ישיר לאובייקט
-        # שים לב: אנחנו מאפסים את הנתונים באובייקט לפני המילוי
+        # 4. מיפוי הנתונים
         fire_event.ims_station_id = station_id
         
-        # משתנים זמניים למילוי (כדי לשמור על הלוגיקה המקורית)
-        # Rain מקבל 0.0 כברירת מחדל, השאר None
+        # איפוס נתונים
         rain_val = 0.0
         
         for channel in channels:
@@ -67,28 +84,17 @@ def enrich_with_ims(fire_event):
             val = channel.get("value")
             
             if val is not None:
-                if name == "TD":
-                    fire_event.ims_temp = val
-                elif name == "RH":
-                    fire_event.ims_humidity = val
-                elif name == "WS":
-                    fire_event.ims_wind_speed = val
-                elif name == "WD":
-                    fire_event.ims_wind_dir = int(val) # המרה ל-int לכיוון
-                elif name == "Rain":
-                    rain_val = val
-                elif name == "WSmax":
-                    fire_event.ims_wind_gust = val
-                elif name == "Grad":
-                    fire_event.ims_radiation = val
+                if name == "TD": fire_event.ims_temp = val
+                elif name == "RH": fire_event.ims_humidity = val
+                elif name == "WS": fire_event.ims_wind_speed = val
+                elif name == "WD": fire_event.ims_wind_dir = int(val)
+                elif name == "Rain": rain_val = val
+                elif name == "WSmax": fire_event.ims_wind_gust = val
+                elif name == "Grad": fire_event.ims_radiation = val
 
-        # עדכון הגשם (בנפרד כי יש לו ברירת מחדל 0)
         fire_event.ims_rain = rain_val
 
-        print(f"✅ IMS Updated locally: Temp={fire_event.ims_temp}, Wind={fire_event.ims_wind_speed}")
+        print(f"✅ IMS Updated locally: Station={station_name}, Temp={fire_event.ims_temp}")
 
     except Exception as e:
-        # תופסים שגיאות רשת/קוד כדי לא להפיל את המוניטור
-        print(f"⚠️ IMS Agent Failed (Skipping): {e}")
-
-# אין צורך בפונקציות ensure_columns או update_db SQL ידני
+        print(f"❌ IMS General Error: {e}")
