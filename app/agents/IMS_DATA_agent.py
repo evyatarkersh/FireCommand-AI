@@ -3,12 +3,14 @@ import os
 import time  # <--- הוספנו את ספריית הזמן להשהיות
 from dotenv import load_dotenv
 from app.services.ims_stations_service import get_nearest_station
+import time
 
 load_dotenv()
 IMS_TOKEN = os.getenv("IMS_TOKEN")
 IMS_BASE_URL = "https://api.ims.gov.il/v1/envista/stations"
 
 def enrich_with_ims(fire_event):
+    start_time = time.time()
     print(f"🕵️ IMS Agent: Working on Event #{fire_event.id}...")
 
     if not IMS_TOKEN:
@@ -89,6 +91,8 @@ def enrich_with_ims(fire_event):
                 fire_event.ims_rain = rain_val
 
                 print(f"✅ IMS Updated: {station_name} ({fire_event.ims_temp}°C)")
+                total_time = time.time() - start_time
+                print(f"⏱️ IMS Agent Time: {total_time:.1f} seconds")
                 return # יציאה מהפונקציה בהצלחה
 
             except Exception as e:
@@ -99,4 +103,6 @@ def enrich_with_ims(fire_event):
         print(f"❌ IMS Failed after {max_retries} attempts for {station_name}")
 
     except Exception as e:
+        total_time = time.time() - start_time
+        print("⏱️ IMS Agent Time (Failed): {:.1f} seconds".format(total_time))
         print(f"❌ IMS General Error: {e}")
