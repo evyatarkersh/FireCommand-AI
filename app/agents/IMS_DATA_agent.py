@@ -1,12 +1,14 @@
 import requests
 import os
-import time
+import time  # <--- הוספנו את ספריית הזמן להשהיות
 from dotenv import load_dotenv
 from app.services.ims_stations_service import get_nearest_station
+import time
 
 load_dotenv()
 IMS_TOKEN = os.getenv("IMS_TOKEN")
 IMS_BASE_URL = "https://api.ims.gov.il/v1/envista/stations"
+
 
 # --- שיפור 1: יצירת Session גלובלי לכל התהליכונים (Connection Pooling) ---
 ims_session = requests.Session()
@@ -39,21 +41,29 @@ def enrich_with_ims(fire_event):
         station_id = station['id']
         station_name = station['name']
 
+        # 2. הכנת הבקשה עם "תחפושת" של דפדפן
         url = f"{IMS_BASE_URL}/{station_id}/data/latest"
+    
         
+        # 3. מנגנון Retry חכם (ניסיון חוזר)
         max_retries = 3
         
         for attempt in range(1, max_retries + 1):
             try:
-                # --- שיפור 2: Timeout מפוצל (3 שניות חיבור, 10 שניות קריאה) ---
-                # ושימוש ב-session במקום requests.get
+                # --- ההשהיה הקריטית ---
+                # אנחנו מחכים 2 שניות לפני כל בקשה כדי לא להפעיל את ה"אזעקה" של השרת
+                #time.sleep(0.5)
+                
+                # Timeout מוגדל ל-25 שניות לשרתים איטיים
                 response = ims_session.get(url, timeout=(3.0, 10.0))
                 
+                # אם קיבלנו HTML (שגיאה) או סטטוס לא תקין
                 if response.status_code != 200 or response.text.strip().startswith("<"):
-                    print(f"   🔄 IMS Error (Attempt {attempt}/{max_retries}): Server blocked/failed. Retrying in 2s...")
-                    time.sleep(0.5) # כאן הגיוני להשהות קצת לפני ניסיון חוזר
-                    continue
+                    print(f"   🔄 IMS Error (Attempt {attempt}/{max_retries}): Server blocked/failed. Retrying in 3s...")
+                    time.sleep(0.5) # מחכים יותר זמן לפני הניסיון הבא
+                    continue # מנסים שוב
 
+                # אם הגענו לפה, קיבלנו JSON תקין!
                 json_response = response.json()
                 
                 if "data" not in json_response or not json_response["data"]:
@@ -63,35 +73,40 @@ def enrich_with_ims(fire_event):
                 latest = json_response["data"][0]
                 channels = latest.get("channels", [])
 
-                # מילוי הנתונים
+                # 4. מילוי הנתונים
                 fire_event.ims_station_id = station_id
-                rain_val = 0.0
                 
-                # --- שיפור 3: מעבר מהיר על הנתונים עם Dictionary ---
-                # הופכים את מערך הערוצים למילון { "TD": 25.0, "RH": 60 ... } לחיפוש מיידי
-                channel_map = {ch.get("name"): ch.get("value") for ch in channels if ch.get("value") is not None}
+                # איפוס משתנים
+                rain_val = 0.0 # ברירת מחדל לגשם
                 
-                fire_event.ims_temp = channel_map.get("TD")
-                fire_event.ims_humidity = channel_map.get("RH")
-                fire_event.ims_wind_speed = channel_map.get("WS")
-                fire_event.ims_wind_dir = int(channel_map["WD"]) if "WD" in channel_map else None
-                fire_event.ims_rain = channel_map.get("Rain", 0.0)
-                fire_event.ims_wind_gust = channel_map.get("WSmax")
-                fire_event.ims_radiation = channel_map.get("Grad")
+                for channel in channels:
+                    name = channel.get("name")
+                    val = channel.get("value")
+                    
+                    if val is not None:
+                        if name == "TD": fire_event.ims_temp = val
+                        elif name == "RH": fire_event.ims_humidity = val
+                        elif name == "WS": fire_event.ims_wind_speed = val
+                        elif name == "WD": fire_event.ims_wind_dir = int(val)
+                        elif name == "Rain": rain_val = val
+                        elif name == "WSmax": fire_event.ims_wind_gust = val
+                        elif name == "Grad": fire_event.ims_radiation = val
+
+                fire_event.ims_rain = rain_val
 
                 print(f"✅ IMS Updated: {station_name} ({fire_event.ims_temp}°C)")
-                print(f"⏱️ IMS Agent Time: {(time.time() - start_time):.1f} seconds")
-                return 
+                total_time = time.time() - start_time
+                print(f"⏱️ IMS Agent Time: {total_time:.1f} seconds")
+                return # יציאה מהפונקציה בהצלחה
 
-            except requests.exceptions.Timeout:
-                print(f"⚠️ IMS Timeout (Attempt {attempt}): Server took too long.")
-                time.sleep(1)
             except Exception as e:
                 print(f"⚠️ IMS Connection Warning (Attempt {attempt}): {e}")
-                time.sleep(1)
+                time.sleep(0.5)
 
+        # אם יצאנו מהלולאה בלי להצליח
         print(f"❌ IMS Failed after {max_retries} attempts for {station_name}")
 
     except Exception as e:
-        print(f"⏱️ IMS Agent Time (Failed): {(time.time() - start_time):.1f} seconds")
+        total_time = time.time() - start_time
+        print("⏱️ IMS Agent Time (Failed): {:.1f} seconds".format(total_time))
         print(f"❌ IMS General Error: {e}")
