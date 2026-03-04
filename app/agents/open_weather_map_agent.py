@@ -1,5 +1,6 @@
 import os
 import requests
+import time
 # שימ לב: אין צורך לייבא את db או את המודל בתוך הפונקציה הזו יותר,
 # כי אנחנו לא שולפים ולא שומרים, רק מעדכנים אובייקט קיים.
 
@@ -9,6 +10,7 @@ class WeatherService:
         self.base_url = "https://api.openweathermap.org/data/2.5/weather"
 
     def update_weather_for_event(self, fire_event):
+        start_time = time.time()
         """
         מקבל אובייקט FireEvent (בזיכרון), פונה ל-API, ומעדכן את השדות.
         ללא Commit ל-DB!
@@ -45,6 +47,8 @@ class WeatherService:
 
                 # 3. אין Commit! רק הודעת הצלחה
                 print(f"✅ Weather updated locally for Event #{fire_event.id}: {fire_event.owm_temperature}°C")
+                total_time = time.time() - start_time
+                print(f"   ⏱️ OWM agent took {total_time:.2f} seconds")
                 return True
 
             else:
@@ -54,4 +58,6 @@ class WeatherService:
         except Exception as e:
             # תופסים שגיאות רשת כדי לא להפיל את המוניטור
             print(f"⚠️ Connection Error to Weather API: {e}")
+            total_time = time.time() - start_time
+            print(f"   ⏱️ OWM agent failed after {total_time:.2f} seconds")
             return None
