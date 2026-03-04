@@ -48,7 +48,7 @@ def enrich_with_ims(fire_event):
             try:
                 # --- ההשהיה הקריטית ---
                 # אנחנו מחכים 2 שניות לפני כל בקשה כדי לא להפעיל את ה"אזעקה" של השרת
-                time.sleep(0.5)
+                #time.sleep(0.5)
                 
                 # Timeout מוגדל ל-25 שניות לשרתים איטיים
                 response = requests.get(url, headers=headers, timeout=25)
@@ -56,7 +56,7 @@ def enrich_with_ims(fire_event):
                 # אם קיבלנו HTML (שגיאה) או סטטוס לא תקין
                 if response.status_code != 200 or response.text.strip().startswith("<"):
                     print(f"   🔄 IMS Error (Attempt {attempt}/{max_retries}): Server blocked/failed. Retrying in 3s...")
-                    time.sleep(0.5) # מחכים יותר זמן לפני הניסיון הבא
+                    #time.sleep(0.5) # מחכים יותר זמן לפני הניסיון הבא
                     continue # מנסים שוב
 
                 # אם הגענו לפה, קיבלנו JSON תקין!

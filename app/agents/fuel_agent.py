@@ -21,12 +21,8 @@ def enrich_with_fuel(fire_event):
         overpass_query = f"""
             [out:json][timeout:15];
             (
-              node(around:50,{lat},{lon})["natural"];
-              way(around:50,{lat},{lon})["natural"];
-              relation(around:50,{lat},{lon})["natural"];
-              node(around:50,{lat},{lon})["landuse"];
-              way(around:50,{lat},{lon})["landuse"];
-              relation(around:50,{lat},{lon})["landuse"];
+              nwr(around:50,{lat},{lon})["natural"];
+              nwr(around:50,{lat},{lon})["landuse"];
             );
             out tags;
         """
