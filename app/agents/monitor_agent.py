@@ -92,6 +92,7 @@ class MonitorAgent:
                     executor.submit(run_in_context, enrich_with_fuel, event)
                 ]
 
+
                 # הפונקציה wait עוצרת את הלולאה הראשית עד שכל ה-4 סיימו
                 # רק אחרי שכולם סיימו לאסוף מידע, נעבור לאירוע הבא
                 wait(futures)
