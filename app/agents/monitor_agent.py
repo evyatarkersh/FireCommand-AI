@@ -86,11 +86,12 @@ class MonitorAgent:
                         return func(target_event)
                 # שולחים את כל 4 המשימות לביצוע במקביל עבור האירוע הנוכחי
                 futures = [
-                    executor.submit(self.weather_service.update_weather_for_event, event),
-                    executor.submit(enrich_with_topography, event),
-                    executor.submit(enrich_with_ims, event),
-                    executor.submit(enrich_with_fuel, event)
+                    executor.submit(run_in_context, self.weather_service.update_weather_for_event, event),
+                    executor.submit(run_in_context, enrich_with_topography, event),
+                    executor.submit(run_in_context, enrich_with_ims, event),
+                    executor.submit(run_in_context, enrich_with_fuel, event)
                 ]
+
 
                 # הפונקציה wait עוצרת את הלולאה הראשית עד שכל ה-4 סיימו
                 # רק אחרי שכולם סיימו לאסוף מידע, נעבור לאירוע הבא
