@@ -1,9 +1,11 @@
 import requests
+import time
 
 # כתובת ה-API של Overpass (השער לנתוני OpenStreetMap)
 OVERPASS_URL = "http://overpass-api.de/api/interpreter"
 
 def enrich_with_fuel(fire_event):
+    start_time = time.time()
     """
     מקבל אובייקט שריפה (FireEvent), פונה ל-OSM, ומעדכן את סוג הדלק באובייקט.
     הפונקציה עובדת בזיכרון (In-Memory) ולא מבצעת Commit ל-DB.
@@ -75,8 +77,12 @@ def enrich_with_fuel(fire_event):
         fire_event.fuel_load = fuel_load
 
         print(f"✅ Fuel Updated locally: {fuel_type} (Load: {fuel_load})")
+        total_time = time.time() - start_time
+        print("⏱️ Fuel Agent Time: {:.2f} seconds".format(total_time))
 
     except Exception as e:
+        total_time = time.time() - start_time
+        print("⏱️ Fuel Agent Time (Failed): {:.2f} seconds".format(total_time))
         # תופסים שגיאות (כמו Timeout או בעיית רשת) וממשיכים הלאה
         print(f"⚠️ Fuel Agent Failed (Skipping): {e}")
         # לא זורקים שגיאה החוצה, כדי ששאר הסוכנים ימשיכו לעבוד

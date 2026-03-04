@@ -1,10 +1,12 @@
 import requests
 import math
+import time
 
 # כתובת ה-API החיצוני
 TOPO_API_URL = "https://api.opentopodata.org/v1/srtm30m"
 
 def enrich_with_topography(fire_event):
+    start_time = time.time()
     """
     מקבל אובייקט שריפה (FireEvent), פונה ל-API, ומעדכן את השדות באובייקט.
     הפונקציה עובדת בזיכרון (In-Memory) ולא מבצעת Commit ל-DB.
@@ -67,10 +69,14 @@ def enrich_with_topography(fire_event):
         fire_event.topo_aspect = aspect_deg
 
         print(f"✅ Topo Updated locally: Elev={z_center}, Slope={slope_deg}")
+        total_time = time.time() - start_time
+        print(f"   ⏱️ Topo agent took {total_time:.2f} seconds")
 
     except Exception as e:
         # אנחנו תופסים את השגיאה, מדפיסים אותה, וממשיכים הלאה.
         # זה מבטיח שהמוניטור לא יקרוס גם אם ה-API של הטופוגרפיה למטה.
         print(f"❌ Topo Agent Failed (Skipping): {e}")
+        total_time = time.time() - start_time
+        print(f"   ⏱️ Topo agent time (Failed): {total_time:.2f} seconds")
 
 # אין כאן פונקציות ensure_columns או update_db - זה תפקיד המודל והמוניטור!
