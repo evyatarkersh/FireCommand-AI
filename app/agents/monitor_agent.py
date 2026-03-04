@@ -86,10 +86,10 @@ class MonitorAgent:
             enrich_with_topography(event)
 
             # ג. נתוני IMS (תחנות)
-            enrich_with_ims(event)
+            #enrich_with_ims(event)
 
             # ד. סוג דלק (קרקע)
-            enrich_with_fuel(event)
+            #enrich_with_fuel(event)
             # # פותחים Pool של 4 תהליכונים (אחד לכל סוכן)
             # with ThreadPoolExecutor(max_workers=4) as executor:
             #     def run_in_context(func, target_event):
