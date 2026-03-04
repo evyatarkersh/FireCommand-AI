@@ -10,6 +10,7 @@ from app.agents.topo_agent import enrich_with_topography
 from app.agents.IMS_DATA_agent import enrich_with_ims
 from app.agents.fuel_agent import enrich_with_fuel
 from concurrent.futures import ThreadPoolExecutor, wait
+from flask import current_app
 
 
 class MonitorAgent:
@@ -75,9 +76,14 @@ class MonitorAgent:
 
         print(f"🌍 Enriching {len(events_to_enrich)} events with external data...")
 
+        app = current_app._get_current_object()
+
         for event in events_to_enrich:
             # פותחים Pool של 4 תהליכונים (אחד לכל סוכן)
             with ThreadPoolExecutor(max_workers=4) as executor:
+                def run_in_context(func, target_event):
+                    with app.app_context():
+                        return func(target_event)
                 # שולחים את כל 4 המשימות לביצוע במקביל עבור האירוע הנוכחי
                 futures = [
                     executor.submit(self.weather_service.update_weather_for_event, event),
