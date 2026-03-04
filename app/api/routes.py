@@ -12,6 +12,7 @@ from app.agents.monitor_agent import MonitorAgent
 from app.agents.topo_agent import enrich_with_topography
 from app.agents.fuel_agent import enrich_with_fuel
 from app.agents.IMS_DATA_agent import enrich_with_ims
+import time
 
 # יצירת ה-Blueprint
 api = Blueprint('api', __name__)
@@ -86,6 +87,7 @@ def test_owm():
 
 @api.route('/run-monitor', methods=['GET'])
 def run_monitor():
+    start_time = time.time()
     try:
         # 1. יצירת הסוכן
         agent = MonitorAgent()
@@ -93,12 +95,17 @@ def run_monitor():
         # 2. הרצת המחזור (Clustering + Weather Enrichment)
         agent.run_cycle()
 
+        total_time = time.time() - start_time
+        print(f"Total time: {total_time}")
         return jsonify({
             "status": "success",
-            "message": "Monitor cycle finished successfully."
+            "message": "Monitor cycle finished successfully.",
+            "total_time_seconds": total_time
         }), 200
 
     except Exception as e:
+        total_time = time.time() - start_time
+        print(f"Total time: {total_time}")
         return jsonify({
             "status": "error",
             "message": str(e)
