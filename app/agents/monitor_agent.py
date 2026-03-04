@@ -9,6 +9,7 @@ from app.agents.open_weather_map_agent import WeatherService
 from app.agents.topo_agent import enrich_with_topography
 from app.agents.IMS_DATA_agent import enrich_with_ims
 from app.agents.fuel_agent import enrich_with_fuel
+from concurrent.futures import ThreadPoolExecutor, wait
 
 
 class MonitorAgent:
@@ -73,21 +74,26 @@ class MonitorAgent:
             return
 
         print(f"🌍 Enriching {len(events_to_enrich)} events with external data...")
-        
+
         for event in events_to_enrich:
-            # אנחנו מעבירים את האובייקט עצמו (event) ולא את ה-ID
-            
-            # א. מזג אוויר
-            self.weather_service.update_weather_for_event(event)
-            
-            # ב. טופוגרפיה
-            enrich_with_topography(event)
-            
-            # ג. נתוני IMS (תחנות)
-            enrich_with_ims(event)
-            
-            # ד. סוג דלק (קרקע)
-            enrich_with_fuel(event)
+            # פותחים Pool של 4 תהליכונים (אחד לכל סוכן)
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                # שולחים את כל 4 המשימות לביצוע במקביל עבור האירוע הנוכחי
+                futures = [
+                    executor.submit(self.weather_service.update_weather_for_event, event),
+                    executor.submit(enrich_with_topography, event),
+                    executor.submit(enrich_with_ims, event),
+                    executor.submit(enrich_with_fuel, event)
+                ]
+
+                # הפונקציה wait עוצרת את הלולאה הראשית עד שכל ה-4 סיימו
+                # רק אחרי שכולם סיימו לאסוף מידע, נעבור לאירוע הבא
+                wait(futures)
+
+                # הערה: אפשר לבדוק כאן אם היו שגיאות באחד הסוכנים
+                for future in futures:
+                    if future.exception():
+                        print(f"❌ Agent Error on event {event.id}: {future.exception()}")
 
         # --- שינוי 3: שמירה מרוכזת בסוף (Unit of Work) ---
         try:
