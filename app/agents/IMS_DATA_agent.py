@@ -9,6 +9,17 @@ load_dotenv()
 IMS_TOKEN = os.getenv("IMS_TOKEN")
 IMS_BASE_URL = "https://api.ims.gov.il/v1/envista/stations"
 
+
+# --- שיפור 1: יצירת Session גלובלי לכל התהליכונים (Connection Pooling) ---
+ims_session = requests.Session()
+# אנחנו מגדירים את ה-Headers פעם אחת בלבד על ה-Session
+ims_session.headers.update({
+    "Authorization": f"ApiToken {IMS_TOKEN}",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/json",
+    "Referer": "https://ims.gov.il/"
+})
+
 def enrich_with_ims(fire_event):
     start_time = time.time()
     print(f"🕵️ IMS Agent: Working on Event #{fire_event.id}...")
@@ -32,14 +43,7 @@ def enrich_with_ims(fire_event):
 
         # 2. הכנת הבקשה עם "תחפושת" של דפדפן
         url = f"{IMS_BASE_URL}/{station_id}/data/latest"
-        
-        # אנחנו אומרים לשרת: "אנחנו לא סקריפט פייתון, אנחנו דפדפן כרום רגיל"
-        headers = {
-            "Authorization": f"ApiToken {IMS_TOKEN}",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "application/json",
-            "Referer": "https://ims.gov.il/"
-        }
+    
         
         # 3. מנגנון Retry חכם (ניסיון חוזר)
         max_retries = 3
@@ -51,12 +55,12 @@ def enrich_with_ims(fire_event):
                 #time.sleep(0.5)
                 
                 # Timeout מוגדל ל-25 שניות לשרתים איטיים
-                response = requests.get(url, headers=headers, timeout=25)
+                response = ims_session.get(url, timeout=(3.0, 10.0))
                 
                 # אם קיבלנו HTML (שגיאה) או סטטוס לא תקין
                 if response.status_code != 200 or response.text.strip().startswith("<"):
                     print(f"   🔄 IMS Error (Attempt {attempt}/{max_retries}): Server blocked/failed. Retrying in 3s...")
-                    #time.sleep(0.5) # מחכים יותר זמן לפני הניסיון הבא
+                    time.sleep(0.5) # מחכים יותר זמן לפני הניסיון הבא
                     continue # מנסים שוב
 
                 # אם הגענו לפה, קיבלנו JSON תקין!
