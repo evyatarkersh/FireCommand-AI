@@ -1,18 +1,10 @@
 import requests
 import time
 
-# --- שיפור 1: שימוש בשרת מראה (Mirror) מהיר יותר של Overpass ---
-# השרת הזה בדרך כלל פחות עמוס מהשרת הגרמני הראשי
-OVERPASS_URL = "https://lz4.overpass-api.de/api/interpreter" 
-# אופציה חלופית אם עדיין איטי: "https://overpass.kumi.systems/api/interpreter"
+# ה-API הרשמי של Esri למפת כיסוי קרקע עולמית (Land Cover) ברזולוציה 10 מטר
+ESRI_LAND_COVER_URL = "https://tiledimageservices.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/Esri_2020_Land_Cover_V2/ImageServer/identify"
 
-# --- שיפור 2: Connection Pooling בדיוק כמו ב-IMS ---
-osm_session = requests.Session()
-osm_session.headers.update({
-    "User-Agent": "FireCommand-AI-Agent/1.0 (Research Project)"
-})
-
-# זיכרון מטמון לאירועים סמוכים (חוסך 100% מהזמן לנקודות באותו קילומטר)
+esri_session = requests.Session()
 fuel_cache = {}
 
 def enrich_with_fuel(fire_event):
@@ -22,8 +14,9 @@ def enrich_with_fuel(fire_event):
     lat = fire_event.latitude
     lon = fire_event.longitude
     
-    # מפתח לזיכרון (עיגול ל-2 ספרות, בערך קילומטר אחד)
-    cache_key = (round(lat, 2), round(lon, 2))
+    # זיכרון מטמון - עיגול ל-3 ספרות (רדיוס של בערך 100 מטר)
+    # זה הרבה יותר מדויק מהקודם (שעשה רזולוציה של 1 ק"מ), כי הלוויין מאוד מדויק!
+    cache_key = (round(lat, 3), round(lon, 3))
     
     if cache_key in fuel_cache:
         cached_type, cached_load = fuel_cache[cache_key]
@@ -33,51 +26,60 @@ def enrich_with_fuel(fire_event):
         return
 
     try:
-        overpass_query = f"""
-            [out:json][timeout:5];
-            (
-              nwr(around:50,{lat},{lon})["natural"];
-              nwr(around:50,{lat},{lon})["landuse"];
-            );
-            out tags;
-        """
+        # פרמטרים לבקשת הפיקסל מהלוויין
+        params = {
+            "geometryType": "esriGeometryPoint",
+            "geometry": f'{{"x":{lon},"y":{lat}}}',
+            "spatialReference": '{"wkid":4326}', # קואורדינטות GPS רגילות
+            "f": "json"
+        }
         
-        # --- שיפור 3: טיימאאוט קצר + שימוש ב-Session ---
-        # אנחנו נותנים לזה גג 2.5 שניות עכשיו
-        response = osm_session.get(OVERPASS_URL, params={'data': overpass_query}, timeout=5)
+        # טיימאאוט קצר מאוד - השרת הזה אמור לענות תוך עשיריות שנייה
+        response = esri_session.get(ESRI_LAND_COVER_URL, params=params, timeout=2.0)
         
-        # ברירת מחדל בסיסית (אם ה-API ענה אבל אין שום מידע באזור הזה - שטח ריק)
         fuel_type = "UNKNOWN"
         fuel_load = 0.5
 
         if response.status_code == 200:
             data = response.json()
-            if 'elements' in data and len(data['elements']) > 0:
-                tags = data['elements'][0].get('tags', {})
-                natural = tags.get('natural')
-                landuse = tags.get('landuse')
+            
+            if "value" in data:
+                # Esri מחזירה מספר שמייצג את סוג הקרקע
+                pixel_value = data["value"]
+                class_name = data.get("name", "Unknown")
                 
-                if natural in ['wood', 'tree_row'] or landuse == 'forest':
-                    fuel_type = "FOREST"; fuel_load = 4.0
-                elif natural in ['scrub', 'heath', 'grassland'] or landuse in ['meadow', 'grass', 'farmland']:
-                    fuel_type = "SHRUB"; fuel_load = 2.0
-                elif landuse in ['residential', 'industrial', 'commercial', 'retail']:
-                    fuel_type = "URBAN"; fuel_load = 0.2
-                elif natural in ['sand', 'bare_rock', 'water']:
-                    fuel_type = "BARREN"; fuel_load = 0.0
+                # תרגום הסיווג הלווייני למודל הדלק שלנו
+                if pixel_value == '2':      # Trees
+                    fuel_type = "FOREST"
+                    fuel_load = 4.0
+                elif pixel_value in ['4', '5', '11']: # Flooded Veg, Crops, Rangeland/Shrub
+                    fuel_type = "SHRUB"
+                    fuel_load = 2.0
+                elif pixel_value == '7':    # Built Area (ערים/כבישים)
+                    fuel_type = "URBAN"
+                    fuel_load = 0.2
+                elif pixel_value in ['1', '8', '9']: # Water, Bare Ground, Snow
+                    fuel_type = "BARREN"
+                    fuel_load = 0.0
+                else:
+                    fuel_type = "DESERT" if lat < 31.5 else "SHRUB"
+                    fuel_load = 0.5
+                    
+                print(f"   🛰️ Satellite detected: {class_name} (Class {pixel_value})")
+            else:
+                print("   ⚠️ No pixel value found in satellite data.")
 
         fire_event.fuel_type = fuel_type
         fire_event.fuel_load = fuel_load
         fuel_cache[cache_key] = (fuel_type, fuel_load)
         
-        print(f"✅ Fuel Updated from OSM: {fuel_type} ({(time.time() - start_time):.2f}s)")
+        print(f"✅ Fuel Updated (Satellite): {fuel_type} ({(time.time() - start_time):.2f}s)")
 
     except requests.exceptions.Timeout:
-        # במקרה של טיימאאוט לא זורקים שגיאה, אלא משאירים UNKNOWN וממשיכים
         fire_event.fuel_type = "UNKNOWN"
         fire_event.fuel_load = 0.5
-        print(f"⚠️ Fuel Agent Timeout (>2.5s). Marked as UNKNOWN.")
+        print(f"⚠️ Fuel Agent Timeout. Marked as UNKNOWN.")
     except Exception as e:
         fire_event.fuel_type = "UNKNOWN"
         fire_event.fuel_load = 0.5
-        print(f"⚠️ Fuel Agent Warning: {e}. Marked as UNKNOWN.")
+        print(f"⚠️ Fuel Agent Error: {e}. Marked as UNKNOWN.")
