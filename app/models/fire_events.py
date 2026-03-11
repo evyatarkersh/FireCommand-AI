@@ -43,6 +43,7 @@ class FireEvent(db.Model):
     
     # IMS Agent
     ims_station_id = db.Column(db.Integer)
+    ims_temp = db.Column(db.Float)
 
     ims_humidity = db.Column(db.Float)
     ims_wind_speed = db.Column(db.Float)
