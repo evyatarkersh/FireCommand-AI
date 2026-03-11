@@ -6,16 +6,17 @@ import time
 esri_session = requests.Session()
 ESRI_LULC_URL = "https://ic.imagery1.arcgis.com/arcgis/rest/services/Sentinel2_10m_LandCover/ImageServer/identify"
 
+# מילון מעודכן הכולל את סוג הקרקע והערכת עומס אש (Fuel Load)
 FUEL_CLASSES = {
-    "1": "Water",  # מים
-    "2": "Trees",  # עצים
-    "4": "Flooded Vegetation",  # צמחייה מוצפת
-    "5": "Crops",  # חקלאות
-    "7": "Built Area",  # שטח בנוי
-    "8": "Bare Ground",  # אדמה חשופה
-    "9": "Snow/Ice",  # שלג/קרח
-    "10": "Clouds",  # עננים
-    "11": "Rangeland"  # מרעה / שיחים
+    "1": {"type": "Water", "fuel_load": 0.0},
+    "2": {"type": "Trees", "fuel_load": 2.5},  # מטען אש כבד
+    "4": {"type": "Flooded Vegetation", "fuel_load": 0.2},
+    "5": {"type": "Crops", "fuel_load": 0.4},  # חקלאות
+    "7": {"type": "Built Area", "fuel_load": 0.0},  # שטח בנוי
+    "8": {"type": "Bare Ground", "fuel_load": 0.0},  # אדמה חשופה
+    "9": {"type": "Snow/Ice", "fuel_load": 0.0},
+    "10": {"type": "Clouds", "fuel_load": -1.0},  # חוסר נתונים עקב עננים
+    "11": {"type": "Rangeland", "fuel_load": 0.4}  # שיחים ומרעה - אש מהירה
 }
 
 
@@ -23,13 +24,14 @@ def enrich_with_fuel(fire_event):
     start_time = time.time()
     print(f"🌲 Fuel Agent: Working on Event #{fire_event.id}...")
 
-    # בניית אובייקט הגיאומטריה התקין
+    # בניית אובייקט הגיאומטריה התקין - שימוש במעלות GPS
     geometry_obj = {
         "x": fire_event.longitude,
         "y": fire_event.latitude,
         "spatialReference": {"wkid": 4326}
     }
 
+    # פרמטרים מותאמים לשליפת נתון נקודתי ללא גיאומטריה מיותרת
     params = {
         "geometry": json.dumps(geometry_obj),
         "geometryType": "esriGeometryPoint",
@@ -50,13 +52,16 @@ def enrich_with_fuel(fire_event):
 
                 if "value" in data and data["value"] != "NoData":
                     pixel_value = data["value"]
-                    # ממירים למחרוזת למקרה שה-API החזיר מספר שלם במקום מחרוזת
-                    fuel_type = FUEL_CLASSES.get(str(pixel_value), "Unknown")
 
-                    # עדכון סוג הדלק באירוע השריפה
-                    fire_event.fuel_type = fuel_type
+                    # שליפת האובייקט המלא מהמילון, עם ערך ברירת מחדל אם לא נמצא
+                    fuel_info = FUEL_CLASSES.get(str(pixel_value), {"type": "Unknown", "fuel_load": 0.0})
 
-                    print(f"✅ Fuel Updated: Event #{fire_event.id} is on '{fuel_type}'")
+                    # עדכון סוג הדלק ועומס האש באירוע השריפה
+                    fire_event.fuel_type = fuel_info["type"]
+                    fire_event.fuel_load = fuel_info["fuel_load"]
+
+                    print(
+                        f"✅ Fuel Updated: Event #{fire_event.id} is '{fire_event.fuel_type}' (Load: {fire_event.fuel_load})")
                     print(f"⏱️ Fuel Agent Time: {(time.time() - start_time):.1f} seconds")
                     return
                 else:
