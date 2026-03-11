@@ -1,5 +1,6 @@
 from app.extensions import db
 from datetime import datetime
+from sqlalchemy.dialects.postgresql import JSONB
 
 
 class FireEvent(db.Model):
@@ -56,10 +57,13 @@ class FireEvent(db.Model):
     fuel_type = db.Column(db.String(50))
     fuel_load = db.Column(db.Float)
 
-    # --- העשרה (טופוגרפיה - הכנה) ---
-
-
-    #prediction_polygon = db.Column(db.JSONB)
+    prediction_polygon = db.Column(JSONB)           # גבולות גזרה גיאוגרפיים (GeoJSON)
+    pred_ros = db.Column(db.Float)                  # מהירות התפשטות במטרים/שעה
+    pred_direction = db.Column(db.Float)            # אזימוט ההתפשטות (0-360)
+    pred_flame_length = db.Column(db.Float)         # גובה להבה משוער במטרים
+    pred_risk_level = db.Column(db.String(20))      # LOW, MODERATE, HIGH, EXTREME
+    prediction_updated_at = db.Column(db.DateTime, default=datetime.utcnow)
+    prediction_summary = db.Column(db.Text)
     
     # הקשר לנתונים הגולמיים
     raw_reads = db.relationship('FireIncident', backref='event', lazy=True)
