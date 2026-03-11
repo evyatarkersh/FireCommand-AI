@@ -43,7 +43,7 @@ class FireEvent(db.Model):
     
     # IMS Agent
     ims_station_id = db.Column(db.Integer)
-    ims_temp = db.Column(db.Float)
+
     ims_humidity = db.Column(db.Float)
     ims_wind_speed = db.Column(db.Float)
     ims_wind_dir = db.Column(db.Integer)
@@ -56,7 +56,9 @@ class FireEvent(db.Model):
     fuel_load = db.Column(db.Float)
 
     # --- העשרה (טופוגרפיה - הכנה) ---
-    elevation = db.Column(db.Float)
+    
 
+    prediction_polygon = db.Column(db.JSONB)
+    
     # הקשר לנתונים הגולמיים
     raw_reads = db.relationship('FireIncident', backref='event', lazy=True)
