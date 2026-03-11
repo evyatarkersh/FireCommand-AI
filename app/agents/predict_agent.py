@@ -2,10 +2,11 @@ import math
 from datetime import datetime
 from app.extensions import db
 from app.models.fire_events import FireEvent
+from app.agents.llm_agent import LLMAgent
 
 class FirePredictorAgent:
     def __init__(self):
-        pass
+        self.llm_agent = LLMAgent()
 
     def run_cycle(self):
         """
@@ -106,6 +107,21 @@ class FirePredictorAgent:
             event.prediction_polygon = polygon
             event.prediction_updated_at = datetime.utcnow()
 
+            # 7. קריאה ל-LLM Agent על בסיס הנתונים המעודכנים באובייקט
+            # עטוף ב-try/except כדי ששגיאת רשת לא תבטל את כל החישוב המתמטי
+            try:
+                # מניח שיצרת מופע של llm_agent ב- __init__ של המחלקה
+                # למשל: self.llm = LLMAgent()
+
+                prediction_data = self._build_llm_payload(event)
+                readable_prediction = self.llm_agent.summarize_predictions([prediction_data])
+
+                # העמודה ששומרת את הסיכום למשתמש
+                event.prediction_summary = readable_prediction
+            except Exception as e:
+                print(f"      ⚠️ שגיאת LLM באירוע {event.id}, ממשיך ללא סיכום מילולי. פירוט: {e}")
+                event.prediction_summary = "⚠️ תקלה זמנית ביצירת הסיכום המילולי."
+
             print(f"      ✅ אירוע {event.id}: חיזוי הושלם (ROS={int(ros_head)}m/h, סיכון={risk_level})")
             return True
 
@@ -146,3 +162,34 @@ class FirePredictorAgent:
 
     def _generate_point_geojson(self, lat, lon):
         return {"type": "Polygon", "coordinates": [[[lon, lat], [lon, lat], [lon, lat], [lon, lat]]]}
+
+    def _build_llm_payload(self, event):
+        """
+        אורז את הנתונים הרלוונטיים מתוך אובייקט האירוע למילון (JSON-like) עבור סוכן ה-LLM.
+        הפונקציה מסננת החוצה מידע כבד כמו הפוליגון, ושולחת רק מה שדרוש לסיכום המילולי.
+        """
+        # תיעדוף נתוני מזג אוויר (IMS קודם, OWM כגיבוי)
+        wind_speed = event.ims_wind_speed if event.ims_wind_speed is not None else (event.owm_wind_speed or 0)
+        wind_dir = event.ims_wind_dir if event.ims_wind_dir is not None else (event.owm_wind_deg or 0)
+        temp = event.ims_temp if event.ims_temp is not None else (event.owm_temperature or 25)
+
+        payload = {
+            "event_id": event.id,
+            "location": f"Lat {event.latitude}, Lon {event.longitude}",
+            "environment": {
+                "fuel_type": getattr(event, 'fuel_type', 'Unknown'),
+                "wind_speed_kmh": wind_speed,
+                "wind_direction_deg": wind_dir,
+                "temperature_c": temp
+            },
+            "predictions": {
+                # השדות האלו בדיוק חושבו ועודכנו באובייקט לפני הקריאה לפונקציה הזו
+                "rate_of_spread_meters_per_hour": getattr(event, 'pred_ros', 0.0),
+                "flame_length_meters": getattr(event, 'pred_flame_length', 0.0),
+                "spread_direction_azimuth": getattr(event, 'pred_direction', 0.0),
+                "risk_level": getattr(event, 'pred_risk_level', 'UNKNOWN'),
+                "prediction_timestamp": str(getattr(event, 'prediction_updated_at', ''))
+            }
+        }
+
+        return payload

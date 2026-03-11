@@ -110,3 +110,42 @@ def run_monitor():
             "status": "error",
             "message": str(e)
         }), 500
+
+
+@api.route('/test-all', methods=['GET'])
+def ingest_and_monitor():
+    start_time = time.time()
+    results = {}
+
+    try:
+        # 1. Run NASA ingestion first
+        nasa_service = NasaIngestionService()
+        fires_data = nasa_service.fetch_and_save_fires(days_back=5)
+        results['nasa_ingestion'] = {
+            "status": "success",
+            "fires_count": fires_data.get("new_fires_added", 0)
+        }
+
+        # 2. Run monitor cycle after NASA ingestion
+        monitor_agent = MonitorAgent()
+        monitor_agent.run_cycle()
+        results['monitor_cycle'] = {
+            "status": "success"
+        }
+
+        total_time = time.time() - start_time
+        return jsonify({
+            "status": "success",
+            "message": "NASA ingestion and monitor cycle completed successfully.",
+            "results": results,
+            "total_time_seconds": total_time
+        }), 200
+
+    except Exception as e:
+        total_time = time.time() - start_time
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "results": results,
+            "total_time_seconds": total_time
+        }), 500

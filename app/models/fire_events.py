@@ -63,6 +63,7 @@ class FireEvent(db.Model):
     pred_flame_length = db.Column(db.Float)         # גובה להבה משוער במטרים
     pred_risk_level = db.Column(db.String(20))      # LOW, MODERATE, HIGH, EXTREME
     prediction_updated_at = db.Column(db.DateTime, default=datetime.utcnow)
+    prediction_summary = db.Column(db.Text)
     
     # הקשר לנתונים הגולמיים
     raw_reads = db.relationship('FireIncident', backref='event', lazy=True)
