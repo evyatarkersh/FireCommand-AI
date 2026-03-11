@@ -56,9 +56,9 @@ class FireEvent(db.Model):
     fuel_load = db.Column(db.Float)
 
     # --- העשרה (טופוגרפיה - הכנה) ---
-    
 
-    prediction_polygon = db.Column(db.JSONB)
+
+    #prediction_polygon = db.Column(db.JSONB)
     
     # הקשר לנתונים הגולמיים
     raw_reads = db.relationship('FireIncident', backref='event', lazy=True)
