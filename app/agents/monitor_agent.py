@@ -11,6 +11,7 @@ from app.agents.IMS_DATA_agent import enrich_with_ims
 from app.agents.fuel_agent import enrich_with_fuel
 from concurrent.futures import ThreadPoolExecutor, wait
 from flask import current_app
+from app.agents.predict_agent import FirePredictorAgent
 
 
 class MonitorAgent:
@@ -112,7 +113,7 @@ class MonitorAgent:
             print(f"❌ Monitor Error (Critical Commit Fail): {e}")
             return
         # 4. הפעלת Prediction Agent
-        self._trigger_prediction_agent(events_to_enrich)
+        self._trigger_prediction_agent()
 
         print("✅ Monitor cycle finished.")
 
@@ -169,12 +170,12 @@ class MonitorAgent:
         event.num_points += 1
         event.last_update = datetime.utcnow()
 
-    def _trigger_prediction_agent(self, events):
+    def _trigger_prediction_agent(self):
         """ כאן בעתיד נקרא לסוכן החיזוי """
-        if not events: return
-        ids = [e.id for e in events]
-        print(f"🔮 Triggering Prediction Agent for events: {ids}")
-        # prediction_agent.predict(ids)
+        print(f"🔮 Triggering Prediction Agent for events")
+        predictor = FirePredictorAgent()
+        # מפעילים את הפונקציה הריקה, ללא פרמטרים!
+        predictor.run_cycle()
 
     def _calculate_distance(self, lat1, lon1, lat2, lon2):
         # Haversine implementation
