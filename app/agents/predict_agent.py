@@ -69,10 +69,14 @@ class FirePredictorAgent:
                 event.prediction_updated_at = datetime.utcnow()
                 return True
 
-            # 3. מודל רות'רמל - חישוב מהירות (ROS)
+           # 3. מתמטיקה מכוילת - מודל רות'רמל (ROS)
             effective_wind_kmh = (wind_speed * 0.6 + gust * 0.4) * 3.6
-            wind_factor = 1.0 + (0.2 * effective_wind_kmh)
-
+            
+            # ריסון פקטור הרוח (Cap)
+            wind_factor = 1.0 + (0.1 * effective_wind_kmh)
+            if wind_factor > 4.5:
+                wind_factor = 4.5  
+            
             solar_factor = 1.2 if 90 < aspect < 270 else 1.0
             dryness = 1.0
             if humidity < 20: dryness += 0.5
@@ -80,10 +84,13 @@ class FirePredictorAgent:
             total_dryness = dryness * solar_factor
 
             slope_factor = math.exp(0.069 * slope)
-            base_ros = fuel_load * 60.0 
             
+            # בסיס מתון לדלק
+            base_ros = fuel_load * 40.0 
+            
+            # קצבי התפשטות (עם Flank רחב של 35%)
             ros_head = base_ros * wind_factor * slope_factor * total_dryness
-            ros_flank = ros_head * 0.15
+            ros_flank = ros_head * 0.35
             ros_back = ros_head * 0.05
 
             # 4. חישוב גובה להבה ורמת סיכון
@@ -92,7 +99,7 @@ class FirePredictorAgent:
             if flame_length > 3.0: risk_level = "EXTREME"
             elif flame_length > 1.5: risk_level = "HIGH"
 
-            # 5. כיוון האש וגיאומטריה (GeoJSON)
+            # 5. כיוון האש וגיאומטריה (GeoJSON) - נשאר לשעה אחת קדימה
             spread_azimuth = (wind_dir + 180) % 360
             polygon = self._generate_ellipse_geojson(
                 event.latitude, event.longitude, spread_azimuth, ros_head, ros_back, ros_flank
