@@ -24,6 +24,12 @@ def create_app():
     with app.app_context():
         from app.models.nasa_fire import FireIncident  # וודא שזה שם הקובץ הנכון
         from app.models.fire_events import FireEvent
+        from app.models.resources import Station, Resource
         db.create_all()
+
+        if Station.query.first() is None:
+            print("Empty station database detected. Starting initial data seeding")
+            from seed_resources import seed_real_israel_stations
+            seed_real_israel_stations()
 
     return app
