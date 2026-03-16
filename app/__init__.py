@@ -29,7 +29,7 @@ def create_app():
 
         if Station.query.first() is None:
             print("Empty station database detected. Starting initial data seeding")
-            from seed_resources import seed_real_israel_stations
+            from app.services.seed_resources import seed_real_israel_stations
             seed_real_israel_stations()
 
     return app
