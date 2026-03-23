@@ -65,5 +65,8 @@ class FireEvent(db.Model):
     prediction_updated_at = db.Column(db.DateTime, default=datetime.utcnow)
     prediction_summary = db.Column(db.Text)
     
+    # --- Commander Agent ---
+    demand_perimeter_m = db.Column(db.Float) # דרישת קו ההגנה (במטרים) עבור הפוליגון החזוי הנוכחי
+    
     # הקשר לנתונים הגולמיים
     raw_reads = db.relationship('FireIncident', backref='event', lazy=True)
