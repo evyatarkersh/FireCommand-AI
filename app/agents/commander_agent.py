@@ -1,4 +1,5 @@
 import math
+import requests
 
 
 from shapely.geometry import shape
@@ -286,3 +287,48 @@ class CommanderAgent:
         except Exception as e:
             db.session.rollback()
             print(f"❌ שגיאה בשמירת השיבוצים: {e}")
+
+    def _get_driving_eta_minutes(self, start_lon, start_lat, dest_lon, dest_lat):
+        """
+        מחשב את זמן הנסיעה (ETA) בדקות בין שתי נקודות באמצעות OSRM API.
+        כולל מנגנון Fallback לחישוב מרחק אווירי במקרה של כשל בשרת.
+        """
+        # בניית ה-URL לפי הסטנדרט של OSRM (קו אורך ואז קו רוחב)
+        url = f"http://router.project-osrm.org/route/v1/driving/{start_lon},{start_lat};{dest_lon},{dest_lat}?overview=false"
+
+        try:
+            # הגדרת Timeout קשיח של 5 שניות. אסור למערכת שו"ב לחכות לנצח.
+            response = requests.get(url, timeout=5.0)
+
+            # זורק חריגה (Exception) אם השרת החזיר קוד שגיאה כמו 404 או 500
+            response.raise_for_status()
+
+            data = response.json()
+
+            # מוודאים שהבקשה הצליחה ושיש מסלול תקין בפלט
+            if data.get("code") == "Ok" and len(data.get("routes", [])) > 0:
+                # זמן הנסיעה חוזר בשניות, מחלקים ב-60 כדי לקבל דקות
+                duration_seconds = data["routes"][0]["duration"]
+                return duration_seconds / 60.0
+            else:
+                print(f"⚠️ OSRM API Warning: התקבלה תשובה לא תקינה מהשרת: {data.get('code')}")
+
+        except requests.exceptions.RequestException as e:
+            # תופס בעיות רשת, ניתוקים, Timeouts וכו'
+            print(f"🔌 שגיאת תקשורת מול שרת הניווט (OSRM): {e}")
+
+        # ==========================================
+        # מנגנון Fallback (גיבוי חירום)
+        # ==========================================
+        print("🔄 מפעיל מנגנון גיבוי לחישוב ETA (מבוסס רדיוס ומהירות ממוצעת)...")
+
+        # חישוב המרחק האווירי בקילומטרים (באמצעות הפונקציה הקיימת שלנו)
+        # שים לב שפה הסדר הוא רוחב ואז אורך!
+        distance_km = self._calculate_distance(start_lat, start_lon, dest_lat, dest_lon)
+
+        # נניח מהירות נסיעה ממוצעת של 60 קמ"ש (קילומטר אחד לדקה)
+        # נכפיל בפקטור של 1.3 כדי לפצות על זה שכבישים הם לא קו ישר (Tortuosity factor)
+        average_speed_kpm = 60.0 / 60.0  # קילומטרים לדקה
+        estimated_minutes = (distance_km / average_speed_kpm) * 1.3
+
+        return estimated_minutes
