@@ -8,44 +8,42 @@ class FirePredictorAgent:
     def __init__(self):
         self.llm_agent = LLMAgent()
 
-    def run_cycle(self):
+    def run_cycle(self, target_hours=1.0):
         """
-        מתעורר, סורק את ה-DB לאירועים שדורשים חיזוי, מבצע חישוב ושומר.
-        לא מקבל שום פרמטר חיצוני.
+        מתעורר (לרוב על ידי סוכן המפקד), סורק את ה-DB לאירועים פעילים, 
+        מבצע חישוב של גבולות הגזרה עבור טווח השעות המבוקש ושומר.
         """
-        print("\n🔮 Predictor Agent: מתעורר וסורק את מסד הנתונים...")
+        print(f"\n🔮 Predictor Agent: מתעורר ומחשב תחזית ל-{target_hours} שעות קדימה...")
 
-        # שליפת אירועים: פעילים, שאין להם פוליגון או שאין להם חותמת זמן
+        # שליפת אירועים: כל אירוע פעיל מקבל חיזוי מחדש, גם אם כבר יש לו אחד!
         events_to_predict = FireEvent.query.filter(
-            FireEvent.is_active == True,
-            (FireEvent.prediction_polygon.is_(None)) | 
-            (FireEvent.prediction_updated_at.is_(None))
+            FireEvent.is_active == True
         ).all()
 
         if not events_to_predict:
-            print("   💤 אין אירועים שדורשים יצירת תחזית כרגע.")
+            print("   💤 אין אירועים פעילים שדורשים יצירת תחזית כרגע.")
             return
 
-        print(f"   🚀 נמצאו {len(events_to_predict)} אירועים ללא תחזית. מתחיל חישוב...")
+        print(f"   🚀 נמצאו {len(events_to_predict)} אירועים פעילים. מתחיל חישוב...")
 
         events_updated = 0
         for event in events_to_predict:
-            success = self._calculate_and_update(event)
+            success = self._calculate_and_update(event, target_hours)
             if success:
                 events_updated += 1
 
         # שמירה מרוכזת לכל האירועים שעודכנו
         if events_updated > 0:
             try:
-                print("   💾 Predictor: שומר את כל הפוליגונים החדשים ל-DB...")
+                print("   💾 Predictor: שומר את כל הפוליגונים המעודכנים ל-DB...")
                 db.session.commit()
                 print("   ✅ תחזיות נשמרו בהצלחה!")
             except Exception as e:
                 db.session.rollback()
                 print(f"   ❌ Predictor Error (Commit Fail): {e}")
 
-    def _calculate_and_update(self, event):
-        """ חישוב מודל התפשטות האש לאירוע בודד """
+    def _calculate_and_update(self, event, target_hours):
+        """ חישוב מודל התפשטות האש לאירוע בודד לפי שעות היעד """
         try:
             # 1. שליפת נתונים (עדיפות ל-IMS, גיבוי OWM)
             wind_speed = event.ims_wind_speed if event.ims_wind_speed is not None else (event.owm_wind_speed or 0)
@@ -70,10 +68,9 @@ class FirePredictorAgent:
                 event.prediction_updated_at = datetime.utcnow()
                 return True
 
-            # 3. מתמטיקה מכוילת - מודל רות'רמל (ROS)
+            # 3. מתמטיקה מכוילת - מודל רות'רמל (ROS) - מחשב קצב מטר/שעה
             effective_wind_kmh = (wind_speed * 0.6 + gust * 0.4) * 3.6
             
-            # ריסון פקטור הרוח (Cap)
             wind_factor = 1.0 + (0.1 * effective_wind_kmh)
             if wind_factor > 4.5:
                 wind_factor = 4.5  
@@ -86,10 +83,9 @@ class FirePredictorAgent:
 
             slope_factor = math.exp(0.069 * slope)
             
-            # בסיס מתון לדלק
             base_ros = fuel_load * 40.0 
             
-            # קצבי התפשטות (עם Flank רחב של 35%)
+            # קצבי התפשטות (מטר לשעה)
             ros_head = base_ros * wind_factor * slope_factor * total_dryness
             ros_flank = ros_head * 0.35
             ros_back = ros_head * 0.05
@@ -100,43 +96,52 @@ class FirePredictorAgent:
             if flame_length > 3.0: risk_level = "EXTREME"
             elif flame_length > 1.5: risk_level = "HIGH"
 
-            # 5. כיוון האש וגיאומטריה (GeoJSON) - נשאר לשעה אחת קדימה
+            # 5. כיוון האש וגיאומטריה (GeoJSON) - מכפילים בזמן היעד!
             spread_azimuth = (wind_dir + 180) % 360
+            
+# מנגנון מקדם דעיכת זמן (Time-Decay) כדי למנוע פוליגונים מוגזמים בטווחים ארוכים
+            effective_hours = target_hours
+            if target_hours > 3.0:
+                effective_hours = 3.0 + ((target_hours - 3.0) * 0.5)
+
+            # המרחק האמיתי שהאש תעבור לפי השעות האפקטיביות
+            head_distance = ros_head * effective_hours
+            back_distance = ros_back * effective_hours
+            flank_distance = ros_flank * effective_hours
+
             polygon = self._generate_ellipse_geojson(
-                event.latitude, event.longitude, spread_azimuth, ros_head, ros_back, ros_flank
+                event.latitude, event.longitude, spread_azimuth, 
+                head_distance, back_distance, flank_distance
             )
 
             # 6. עדכון האובייקט לקראת השמירה
-            event.pred_ros = ros_head
+            event.pred_ros = ros_head # שומרים את הקצב לשעה כמידע סטטיסטי
             event.pred_direction = spread_azimuth
             event.pred_flame_length = flame_length
             event.pred_risk_level = risk_level
             event.prediction_polygon = polygon
             event.prediction_updated_at = datetime.utcnow()
 
-            # 7. קריאה ל-LLM Agent על בסיס הנתונים המעודכנים באובייקט
-            # עטוף ב-try/except כדי ששגיאת רשת לא תבטל את כל החישוב המתמטי
+            # 7. קריאה ל-LLM Agent
             try:
-                # מניח שיצרת מופע של llm_agent ב- __init__ של המחלקה
-                # למשל: self.llm = LLMAgent()
-
                 prediction_data = self._build_llm_payload(event)
+                # נוסיף גם את טווח השעות למידע שה-LLM מקבל
+                prediction_data["predictions"]["time_horizon_hours"] = target_hours
+                
                 readable_prediction = self.llm_agent.summarize_predictions([prediction_data])
-
-                # העמודה ששומרת את הסיכום למשתמש
                 event.prediction_summary = readable_prediction
             except Exception as e:
                 print(f"      ⚠️ שגיאת LLM באירוע {event.id}, ממשיך ללא סיכום מילולי. פירוט: {e}")
                 event.prediction_summary = "⚠️ תקלה זמנית ביצירת הסיכום המילולי."
 
-            print(f"      ✅ אירוע {event.id}: חיזוי הושלם (ROS={int(ros_head)}m/h, סיכון={risk_level})")
+            print(f"      ✅ אירוע {event.id}: חיזוי ל-{target_hours} שעות הושלם (ROS={int(ros_head)}m/h, סיכון={risk_level})")
             return True
 
         except Exception as e:
             print(f"      ⚠️ שגיאה בחישוב לאירוע {event.id}: {e}")
             return False
 
-    # --- פונקציות גיאומטריה ---
+    # --- פונקציות גיאומטריה נשארות זהות ---
     def _generate_ellipse_geojson(self, lat, lon, azimuth, head_m, back_m, flank_m):
         major_axis = (head_m + back_m) / 2.0
         minor_axis = flank_m
@@ -171,11 +176,7 @@ class FirePredictorAgent:
         return {"type": "Polygon", "coordinates": [[[lon, lat], [lon, lat], [lon, lat], [lon, lat]]]}
 
     def _build_llm_payload(self, event):
-        """
-        אורז את הנתונים הרלוונטיים מתוך אובייקט האירוע למילון (JSON-like) עבור סוכן ה-LLM.
-        הפונקציה מסננת החוצה מידע כבד כמו הפוליגון, ושולחת רק מה שדרוש לסיכום המילולי.
-        """
-        # תיעדוף נתוני מזג אוויר (IMS קודם, OWM כגיבוי)
+        # ... ללא שינוי, בדיוק כמו הקוד המקורי שלך ...
         wind_speed = event.ims_wind_speed if event.ims_wind_speed is not None else (event.owm_wind_speed or 0)
         wind_dir = event.ims_wind_dir if event.ims_wind_dir is not None else (event.owm_wind_deg or 0)
         temp = event.ims_temp if event.ims_temp is not None else (event.owm_temperature or 25)
@@ -190,7 +191,6 @@ class FirePredictorAgent:
                 "temperature_c": temp
             },
             "predictions": {
-                # השדות האלו בדיוק חושבו ועודכנו באובייקט לפני הקריאה לפונקציה הזו
                 "rate_of_spread_meters_per_hour": getattr(event, 'pred_ros', 0.0),
                 "flame_length_meters": getattr(event, 'pred_flame_length', 0.0),
                 "spread_direction_azimuth": getattr(event, 'pred_direction', 0.0),
