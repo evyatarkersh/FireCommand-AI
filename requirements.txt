@@ -54,3 +54,5 @@ urllib3==1.26.15
 websockets==15.0.1
 Werkzeug==3.1.5
 zipp==3.23.0
+shapely>=2.0.0
+pyproj>=3.0.0
