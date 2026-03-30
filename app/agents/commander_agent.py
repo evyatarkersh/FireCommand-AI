@@ -192,9 +192,10 @@ class CommanderAgent:
         for res in resources:
             matrix[res.id] = {}
             for fire in fires:
-                dist_km = self._calculate_distance(fire.latitude, fire.longitude, res.current_lat, res.current_lon)
+                #dist_km = self._calculate_distance(fire.latitude, fire.longitude, res.current_lat, res.current_lon)
                 # שימוש בנוסחה המהירה בינתיים: (מרחק * 1.4 עיקול) / 60 קמ"ש
-                matrix[res.id][fire.id] = (dist_km * 1.4) / 60.0 
+                #matrix[res.id][fire.id] = (dist_km * 1.4) / 60.0 
+                matrix[res.id][fire.id] = self._get_driving_eta_minutes(res.current_lat, res.current_lon, fire.latitude, fire.longitude)
         return matrix
 
     def run_master_cycle(self):
@@ -334,12 +335,8 @@ class CommanderAgent:
         except Exception as e:
             db.session.rollback()
             print(f"❌ שגיאה בשמירת השיבוצים: {e}")
-    
+    """
     def run_master_cycle(self):
-        """
-        הלולאה האסטרטגית המרכזית.
-        מאתרת שריפות, ובכל איטרציה מפעילה סוכן חיזוי רוחבי, מחשבת דרישות דרך DB, ומשבצת כוחות.
-        """
         from app.models.fire_events import FireEvent
         from app.extensions import db
         # הוסף את ייבוא סוכן החיזוי בהתאם לנתיב האמיתי בפרויקט שלכם
@@ -455,7 +452,7 @@ class CommanderAgent:
         except Exception as e:
             db.session.rollback()
             print(f"❌ שגיאה בשמירת השיבוצים: {e}")
-
+    """
     def _get_driving_eta_minutes(self, start_lon, start_lat, dest_lon, dest_lat):
         """
         מחשב את זמן הנסיעה (ETA) בדקות בין שתי נקודות באמצעות OSRM API.
