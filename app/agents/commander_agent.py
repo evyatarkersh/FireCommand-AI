@@ -1,6 +1,6 @@
 import math
+import time
 import requests
-
 
 from shapely.geometry import shape
 from pyproj import Geod
@@ -35,6 +35,7 @@ class CommanderAgent:
     def __init__(self):
         # הגדרת אובייקט מתמטי לחישוב מרחקים על פני כדור הארץ במטרים (WGS84)
         self.geod = Geod(ellps="WGS84")
+        self.http_session = requests.Session()
 
     # ==========================================
     # שלב 1: חישוב דרישות (היקף פוליגון)
@@ -120,7 +121,7 @@ class CommanderAgent:
         """
         terrain = self._determine_terrain(event.fuel_type)
         # תוקן לשימוש בשדה הנכון מה-DB
-        slope = getattr(event, 'topo_slope', 0.0)
+        slope = 0.0 if event.topo_slope is None else event.topo_slope
 
         base_rate = self.BASE_PRODUCTION_RATES.get(resource_type, 0.0)
         sdi_factor = self._calculate_sdi_factor(resource_type, terrain, slope)
@@ -128,9 +129,17 @@ class CommanderAgent:
         return base_rate * sdi_factor
 
     def _fetch_available_resources(self):
-        """ שולף את כל המשאבים הפנויים ממסד הנתונים פעם אחת בלבד ומסדר אותם לפי סוג. """
+        """
+        שולף את כל המשאבים הפנויים ממסד הנתונים פעם אחת בלבד ומסדר אותם לפי סוג.
+        משתמש ב-joinedload כדי למשוך את נתוני התחנות מראש (Eager Loading) ולמנוע בעיית N+1.
+        """
         from app.models.resources import Resource
-        available_resources = Resource.query.filter_by(status='AVAILABLE').all()
+        from sqlalchemy.orm import joinedload  # הייבוא הקריטי שמוסיף לנו את היכולת הזו
+
+        # מוסיפים את options(joinedload...) כדי להגיד למסד הנתונים: "תביא גם את התחנה באותה נסיעה"
+        available_resources = Resource.query.options(
+            joinedload(Resource.station)
+        ).filter_by(status='AVAILABLE').all()
 
         supply = {"SAAR": [], "ESHED": [], "ROTEM": [], "AIR_TRACTOR": []}
         for res in available_resources:
@@ -182,21 +191,85 @@ class CommanderAgent:
         
         # מחזיר את שם המחוז, או ערך ברירת מחדל אם משהו השתבש
         return closest_station.district if closest_station else "UNKNOWN"
-    
-    def _get_mock_distance_matrix(self, resources, fires):
+
+    def _get_eta_matrix(self, resources, fires):
         """
-        [PLACEHOLDER] מדמה את ה-API העתידי. 
-        מחזירה מטריצה (מילון כפול) עם זמן ההגעה המדויק מכל כבאית לכל שריפה.
+        מחשבת מטריצת זמנים בעזרת OSRM Table API.
+        שולחת בקשה מרוכזת אחת בלבד לכל הזירה! מוריד זמן ריצה מדקות לשניות בודדות.
         """
-        matrix = {}
+        matrix = {res.id: {} for res in resources}
+
+        # 1. נאחד רכבים שיושבים באותה תחנה (כדי לחסוך קואורדינטות כפולות לשרת)
+        stations_dict = {}  # מפתח: (אורך, רוחב), ערך: רשימת רכבים בתחנה הזו
         for res in resources:
-            matrix[res.id] = {}
+            loc = (res.current_lon, res.current_lat)
+            if loc not in stations_dict:
+                stations_dict[loc] = []
+            stations_dict[loc].append(res)
+
+        unique_stations = list(stations_dict.keys())
+
+        # 2. בניית מערך קואורדינטות: קודם כל התחנות (המקורות), ואז כל השריפות (היעדים)
+        coords = [f"{lon},{lat}" for lon, lat in unique_stations]
+        coords += [f"{fire.longitude},{fire.latitude}" for fire in fires]
+
+        # יצירת האינדקסים (מי ברשימה הוא מקור ומי הוא יעד)
+        # לדוגמה: אם יש 4 תחנות, האינדקסים שלהן הם 0;1;2;3
+        sources_indices = ";".join(str(i) for i in range(len(unique_stations)))
+        # אם יש 2 שריפות, האינדקסים שלהן הם 4;5
+        dest_indices = ";".join(str(i + len(unique_stations)) for i in range(len(fires)))
+
+        # 3. בניית ה-URL לשירות ה-Table
+        coords_string = ";".join(coords)
+        url = f"http://router.project-osrm.org/table/v1/driving/{coords_string}?sources={sources_indices}&destinations={dest_indices}"
+
+        try:
+            print(f"   🌐 שולח בקשת OSRM Table מרוכזת ({len(unique_stations)} מיקומי תחנות מול {len(fires)} יעדים)...")
+
+            # משתמשים ב-SESSION שלנו שעובד מעולה!
+            response = self.http_session.get(url, timeout=10.0)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get("code") == "Ok":
+                # השרת מחזיר מטריצה (מערך דו-ממדי) של שניות
+                durations = data["durations"]
+
+                # 4. פענוח המטריצה ושיוך חזרה לכל רכב במערכת
+                for i, station_loc in enumerate(unique_stations):
+                    for j, fire in enumerate(fires):
+                        duration_seconds = durations[i][j]
+
+                        # השרת מחזיר None אם אין כביש (למשל מעבר לים/גבול)
+                        if duration_seconds is not None:
+                            eta_hours = duration_seconds / 3600.0  # המרה משניות לשעות!
+                        else:
+                            eta_hours = 999.0  # לא עביר
+
+                        # מעדכנים את הזמן הזה ל*כל* הרכבים שיושבים באותה תחנה
+                        for res in stations_dict[station_loc]:
+                            matrix[res.id][fire.id] = eta_hours
+
+                print("   ⚡ OSRM Table API: המטריצה כולה חזרה בהצלחה בקריאה אחת!")
+                return matrix
+            else:
+                print(f"⚠️ שגיאה מהשרת: {data.get('code')}")
+
+        except Exception as e:
+            print(f"🔌 שגיאת OSRM Table API (עובר לגיבוי מתמטי): {e}")
+
+        # ==========================================
+        # מנגנון Fallback: אם ה-API נפל, נעשה מתמטיקה מהירה (אופליין)
+        # ==========================================
+        print("🔄 מחשב מטריצה בעזרת מנוע אופליין מקומי...")
+        for res in resources:
             for fire in fires:
-                #dist_km = self._calculate_distance(fire.latitude, fire.longitude, res.current_lat, res.current_lon)
-                # שימוש בנוסחה המהירה בינתיים: (מרחק * 1.4 עיקול) / 60 קמ"ש
-                #matrix[res.id][fire.id] = (dist_km * 1.4) / 60.0 
-                matrix[res.id][fire.id] = self._get_driving_eta_minutes(res.current_lat, res.current_lon, fire.latitude, fire.longitude)
+                dist_km = self._calculate_distance(res.current_lat, res.current_lon, fire.latitude, fire.longitude)
+                eta_hours = (dist_km * 1.3) / 60.0
+                matrix[res.id][fire.id] = eta_hours
+
         return matrix
+
 
     def run_master_cycle(self):
         """
@@ -211,10 +284,13 @@ class CommanderAgent:
         print("🚀 מתחיל מחזור פיקוד אסטרטגי (Master Cycle)...")
         print("==================================================")
 
+        cycle_start_time = time.time()
+
         # --- שלב 0: Setup והכנת זירות (מחוץ ללולאה) ---
         active_fires = FireEvent.query.filter(FireEvent.is_active == True).all()
         if not active_fires:
             print("✅ אין שריפות פעילות. חזרה לשגרה.")
+            print(f"⏱️ Master Cycle הסתיים מוקדם (Early Return) תוך {time.time() - cycle_start_time:.2f} שניות.")
             return
 
         all_stations = Station.query.all()
@@ -239,6 +315,8 @@ class CommanderAgent:
 
         # --- הלולאה המרכזית (Spatio-Temporal Loop) ---
         for target_hours in time_horizons:
+            step_start_time = time.time()
+
             # עצירה אם הכל נפתר
             if all(fire.is_active == False for fire in active_fires):
                 print("🎯 כל הזירות בארץ קיבלו מענה מלא!")
@@ -302,7 +380,7 @@ class CommanderAgent:
                             math_survivors.append(res)
 
                 # --- שלב ב': קבלת זמנים מדויקים מה-API ---
-                eta_matrix = self._get_mock_distance_matrix(math_survivors, unsolved_fires)
+                eta_matrix = self._get_eta_matrix(math_survivors, unsolved_fires)
 
                 # --- בדיקת היתכנות (Feasibility Check) ---
                 total_potential_yield = 0.0
@@ -328,6 +406,9 @@ class CommanderAgent:
                 else:
                     print(f"     ❌ אין מספיק כוח (חסר {total_district_demand - total_potential_yield:.1f} מטרים). ממתין להרחבת חלון הזמן.")
 
+            step_elapsed = time.time() - step_start_time
+            print(f"   ⏱️ חלון {target_hours}h הסתיים תוך {step_elapsed:.2f} שניות.")
+
         # --- כתיבה לדאטה-בייס ---
         try:
             db.session.commit()
@@ -335,6 +416,9 @@ class CommanderAgent:
         except Exception as e:
             db.session.rollback()
             print(f"❌ שגיאה בשמירת השיבוצים: {e}")
+
+        total_elapsed = time.time() - cycle_start_time
+        print(f"\n⏱️ Master Cycle הסתיים תוך {total_elapsed:.2f} שניות סה\"כ.")
     """
     def run_master_cycle(self):
         from app.models.fire_events import FireEvent
@@ -463,7 +547,7 @@ class CommanderAgent:
 
         try:
             # הגדרת Timeout קשיח של 5 שניות. אסור למערכת שו"ב לחכות לנצח.
-            response = requests.get(url, timeout=5.0)
+            response = self.http_session.get(url, timeout=5.0)
 
             # זורק חריגה (Exception) אם השרת החזיר קוד שגיאה כמו 404 או 500
             response.raise_for_status()
