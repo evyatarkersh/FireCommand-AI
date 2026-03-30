@@ -1,8 +1,6 @@
 import math
 import time
 import requests
-import concurrent.futures
-
 
 from shapely.geometry import shape
 from pyproj import Geod
@@ -194,7 +192,7 @@ class CommanderAgent:
         # מחזיר את שם המחוז, או ערך ברירת מחדל אם משהו השתבש
         return closest_station.district if closest_station else "UNKNOWN"
 
-    def _get_mock_distance_matrix(self, resources, fires):
+    def _get_eta_matrix(self, resources, fires):
         """
         מחשבת מטריצת זמנים בעזרת OSRM Table API.
         שולחת בקשה מרוכזת אחת בלבד לכל הזירה! מוריד זמן ריצה מדקות לשניות בודדות.
@@ -382,7 +380,7 @@ class CommanderAgent:
                             math_survivors.append(res)
 
                 # --- שלב ב': קבלת זמנים מדויקים מה-API ---
-                eta_matrix = self._get_mock_distance_matrix(math_survivors, unsolved_fires)
+                eta_matrix = self._get_eta_matrix(math_survivors, unsolved_fires)
 
                 # --- בדיקת היתכנות (Feasibility Check) ---
                 total_potential_yield = 0.0
