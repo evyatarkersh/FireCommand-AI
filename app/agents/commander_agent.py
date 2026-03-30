@@ -120,7 +120,7 @@ class CommanderAgent:
         """
         terrain = self._determine_terrain(event.fuel_type)
         # תוקן לשימוש בשדה הנכון מה-DB
-        slope = getattr(event, 'topo_slope', 0.0)
+        slope = 0.0 if event.topo_slope is None else event.topo_slope
 
         base_rate = self.BASE_PRODUCTION_RATES.get(resource_type, 0.0)
         sdi_factor = self._calculate_sdi_factor(resource_type, terrain, slope)
@@ -185,17 +185,39 @@ class CommanderAgent:
     
     def _get_mock_distance_matrix(self, resources, fires):
         """
-        [PLACEHOLDER] מדמה את ה-API העתידי. 
-        מחזירה מטריצה (מילון כפול) עם זמן ההגעה המדויק מכל כבאית לכל שריפה.
+        מחשבת מטריצת זמנים (Distance Matrix) בעזרת OSRM API.
+        כוללת מנגנון 'מטמון' (Cache) חכם כדי לא לפנות ל-API פעמיים עבור אותה תחנה!
         """
         matrix = {}
+
+        # 1. יצירת מטמון (Cache) לחישובי זמנים לפי קואורדינטות גיאוגרפיות.
+        # המפתח יהיה (origin_lon, origin_lat, dest_lon, dest_lat) והערך יהיה הזמן בדקות.
+        eta_cache = {}
+
         for res in resources:
             matrix[res.id] = {}
+
             for fire in fires:
-                #dist_km = self._calculate_distance(fire.latitude, fire.longitude, res.current_lat, res.current_lon)
-                # שימוש בנוסחה המהירה בינתיים: (מרחק * 1.4 עיקול) / 60 קמ"ש
-                #matrix[res.id][fire.id] = (dist_km * 1.4) / 60.0 
-                matrix[res.id][fire.id] = self._get_driving_eta_minutes(res.current_lat, res.current_lon, fire.latitude, fire.longitude)
+                # מפתח ייחודי לנתיב הזה
+                route_key = (res.current_lon, res.current_lat, fire.longitude, fire.latitude)
+
+                # אם עוד לא חישבנו את הנתיב הזה מול ה-API, נחשב ונשמור במטמון
+                if route_key not in eta_cache:
+                    # שים לב! מתקן את סדר השליחה: קודם אורך (lon) ואז רוחב (lat)
+                    eta = self._get_driving_eta_minutes(
+                        res.current_lon, res.current_lat,
+                        fire.longitude, fire.latitude
+                    )
+                    eta_cache[route_key] = eta
+
+                # שולף את הזמן (מה-API או מהמטמון) וממיר משעות לדקות עבור המטריצה
+                matrix[res.id][fire.id] = eta_cache[route_key] / 60.0  # מחלקים ב-60 כדי שהלולאה תעבוד בשעות!
+
+        # הדפסת בקרה קטנה כדי לראות כמה קריאות API חסכנו
+        total_checks = len(resources) * len(fires)
+        api_calls = len(eta_cache)
+        print(f"   ⚡ אופטימיזציית רשת: בוצעו רק {api_calls} קריאות API במקום {total_checks}!")
+
         return matrix
 
     def run_master_cycle(self):
