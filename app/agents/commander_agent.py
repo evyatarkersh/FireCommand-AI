@@ -166,6 +166,174 @@ class CommanderAgent:
             print(f"⚠️ אזהרה קריטית: לא נותרו רכבי ESHED פנויים בארץ לתמיכה בשריפה {fire.id}!")
             return False
 
+    def _assign_district_to_fire(self, fire, all_stations):
+        """
+        מוצא את התחנה הקרובה ביותר לשריפה ומשייך את השריפה למחוז של אותה תחנה.
+        """
+        closest_station = None
+        min_dist = float('inf')
+        
+        for station in all_stations:
+            dist = self._calculate_distance(fire.latitude, fire.longitude, station.latitude, station.longitude)
+            if dist < min_dist:
+                min_dist = dist
+                closest_station = station
+        
+        # מחזיר את שם המחוז, או ערך ברירת מחדל אם משהו השתבש
+        return closest_station.district if closest_station else "UNKNOWN"
+    
+    def _get_mock_distance_matrix(self, resources, fires):
+        """
+        [PLACEHOLDER] מדמה את ה-API העתידי. 
+        מחזירה מטריצה (מילון כפול) עם זמן ההגעה המדויק מכל כבאית לכל שריפה.
+        """
+        matrix = {}
+        for res in resources:
+            matrix[res.id] = {}
+            for fire in fires:
+                dist_km = self._calculate_distance(fire.latitude, fire.longitude, res.current_lat, res.current_lon)
+                # שימוש בנוסחה המהירה בינתיים: (מרחק * 1.4 עיקול) / 60 קמ"ש
+                matrix[res.id][fire.id] = (dist_km * 1.4) / 60.0 
+        return matrix
+
+    def run_master_cycle(self):
+        """
+        הלולאה האסטרטגית המרכזית (Time-First Architecture).
+        """
+        from app.models.fire_events import FireEvent
+        from app.models.stations import Station
+        from app.extensions import db
+        from app.agents.predict_agent import FirePredictorAgent
+
+        print("\n==================================================")
+        print("🚀 מתחיל מחזור פיקוד אסטרטגי (Master Cycle)...")
+        print("==================================================")
+
+        # --- שלב 0: Setup והכנת זירות (מחוץ ללולאה) ---
+        active_fires = FireEvent.query.filter(FireEvent.is_active == True).all()
+        if not active_fires:
+            print("✅ אין שריפות פעילות. חזרה לשגרה.")
+            return
+
+        all_stations = Station.query.all()
+        available_supply = self._fetch_available_resources()
+        
+        # בניית מילון זירות לפי מחוזות
+        district_zones = {}
+        for fire in active_fires:
+            d_name = self._assign_district_to_fire(fire, all_stations)
+            if d_name not in district_zones:
+                district_zones[d_name] = []
+            district_zones[d_name].append(fire)
+
+        print(f"🗺️ המערכת קברצה {len(active_fires)} שריפות ל-{len(district_zones)} זירות מחוזיות.")
+
+        allocated_in_this_cycle = set()
+        allocated_yield_per_fire = {fire.id: 0.0 for fire in active_fires} # שמירת היסטוריית שיבוצים
+        fire_demands = {fire.id: 0.0 for fire in active_fires}
+
+        predictor = FirePredictorAgent()
+        time_horizons = [1.0, 2.0, 3.0, 6.0, 12.0] # חלונות הזמן (בשעות)
+
+        # --- הלולאה המרכזית (Spatio-Temporal Loop) ---
+        for target_hours in time_horizons:
+            # עצירה אם הכל נפתר
+            if all(fire.is_active == False for fire in active_fires):
+                print("🎯 כל הזירות בארץ קיבלו מענה מלא!")
+                break
+
+            print(f"\n⏳ פותח חלון זמן חיזוי ל-{target_hours} שעות קדימה...")
+
+            # 1. חיזוי ודרישה מחדש לזמן הנוכחי
+            try:
+                predictor.run_cycle(target_hours=target_hours)
+                self.step1_calculate_demands()
+            except Exception as e:
+                print(f"⚠️ שגיאה בהרצת חיזוי/דרישה: {e}")
+
+            # 2. מעבר על כל זירה לבדיקת היתכנות
+            for district_name, district_fires in district_zones.items():
+                
+                unsolved_fires = [f for f in district_fires if f.is_active]
+                if not unsolved_fires:
+                    continue # זירה זו נפתרה
+                
+                print(f"  📍 בודק זירת: {district_name} ({len(unsolved_fires)} שריפות פעילות)")
+
+                # חישוב הדרישה נטו של הזירה
+                total_district_demand = 0.0
+                for fire in unsolved_fires:
+                    db.session.refresh(fire) # מושכים את הדרישה המעודכנת שחושבה הרגע
+                    updated_demand = getattr(fire, 'demand_perimeter_m', 0.0)
+                    
+                    # קיזוז תפוקה מכוחות שכבר שלחנו לשריפה הזו (כדי לא לבקש פעמיים)
+                    current_demand = updated_demand - allocated_yield_per_fire[fire.id]
+                    fire_demands[fire.id] = max(0, current_demand)
+                    total_district_demand += fire_demands[fire.id]
+
+                if total_district_demand <= 0:
+                    for f in unsolved_fires: f.is_active = False
+                    continue
+
+                # --- שלב א': סינון מתמטי מהיר (מי מסוגל להגיע לזירה?) ---
+                math_survivors = []
+                for res_type, resources in available_supply.items():
+                    if res_type == "ESHED": continue 
+                    
+                    for res in resources:
+                        if res.id in allocated_in_this_cycle: continue
+                        
+                        # הגבלת מחוזות בשעה הראשונה
+                        if target_hours <= 1.0 and res.station.district != district_name:
+                            continue
+
+                        # האם הכלי יכול להגיע לפחות לאחת השריפות בזירה בזמן?
+                        can_reach = False
+                        for fire in unsolved_fires:
+                            dist = self._calculate_distance(fire.latitude, fire.longitude, res.current_lat, res.current_lon)
+                            fast_eta = (dist * 1.4) / 60.0
+                            if fast_eta < target_hours:
+                                can_reach = True
+                                break
+                        
+                        if can_reach:
+                            math_survivors.append(res)
+
+                # --- שלב ב': קבלת זמנים מדויקים מה-API ---
+                eta_matrix = self._get_mock_distance_matrix(math_survivors, unsolved_fires)
+
+                # --- בדיקת היתכנות (Feasibility Check) ---
+                total_potential_yield = 0.0
+                
+                for res in math_survivors:
+                    # כדי להעריך פוטנציאל, נניח שהכלי ייסע לשריפה שאליה הוא מגיע הכי מהר
+                    best_eta = min(eta_matrix[res.id][f.id] for f in unsolved_fires)
+                    net_time = target_hours - best_eta
+                    
+                    if net_time > 0:
+                        # חישוב תפוקה לשעה (נניח שריפה ראשונה כמייצגת SDI לטובת ההערכה)
+                        hourly_yield = self.get_actual_yield(res.resource_type, unsolved_fires[0])
+                        total_potential_yield += hourly_yield * net_time
+
+                if total_potential_yield >= total_district_demand:
+                    print(f"     ✅ נמצאה היתכנות! (היצע: {total_potential_yield:.1f} | ביקוש: {total_district_demand:.1f})")
+                    
+                    # הקריאה לשלב 4 האמיתי תבוא כאן!
+                    # self.step4_optimize_and_dispatch(unsolved_fires, math_survivors, eta_matrix, ...)
+                    
+                    # בינתיים, לצורך השלד, נסמן את הזירה כפתורה כדי שהלולאה תתקדם
+                    for f in unsolved_fires: f.is_active = False 
+                else:
+                    print(f"     ❌ אין מספיק כוח (חסר {total_district_demand - total_potential_yield:.1f} מטרים). ממתין להרחבת חלון הזמן.")
+
+        # --- כתיבה לדאטה-בייס ---
+        try:
+            db.session.commit()
+            print("💾 מחזור הפיקוד הסתיים. שיבוצים נשמרו בהצלחה.")
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ שגיאה בשמירת השיבוצים: {e}")
+    
     def run_master_cycle(self):
         """
         הלולאה האסטרטגית המרכזית.
