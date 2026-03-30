@@ -203,7 +203,7 @@ class CommanderAgent:
         הלולאה האסטרטגית המרכזית (Time-First Architecture).
         """
         from app.models.fire_events import FireEvent
-        from app.models.stations import Station
+        from app.models.resources import Station
         from app.extensions import db
         from app.agents.predict_agent import FirePredictorAgent
 
