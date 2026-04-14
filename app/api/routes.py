@@ -12,7 +12,7 @@ from app.agents.monitor_agent import MonitorAgent
 from app.agents.topo_agent import enrich_with_topography
 from app.agents.fuel_agent import enrich_with_fuel
 from app.agents.IMS_DATA_agent import enrich_with_ims
-import time
+import time, random
 
 # יצירת ה-Blueprint
 api = Blueprint('api', __name__)
@@ -149,3 +149,35 @@ def ingest_and_monitor():
             "results": results,
             "total_time_seconds": total_time
         }), 500
+
+
+from app.extensions import socketio # ייבוא בתחילת הקובץ
+
+@api.route('/trigger-fire')
+def trigger_fire():
+    # פונקציה לבדיקת עומס - יוצרת 5 שריפות אקראיות באזור ירושלים
+    fires = []
+    for i in range(5):
+        fake_fire = {
+            "event_id": 900 + i,
+            "lat": 31.7 + random.uniform(-0.1, 0.1), # הגרלה סביב ירושלים
+            "lon": 35.2 + random.uniform(-0.1, 0.1),
+            "intensity": "High"
+        }
+        fires.append(fake_fire)
+        socketio.emit('new_fire', fake_fire) # משדר כל אחת
+
+    return jsonify({"status": "5 Alerts sent!", "data": fires})
+
+@api.route('/active-fires', methods=['GET'])
+def get_active_fires():
+    try:
+        # שליפת כל אירועי השריפה הפעילים מה-DB
+        # (השתמשתי ב-FireEvent, וודא שזה השם הנכון אצלך)
+        from app.models.fire_events import FireEvent
+        active_fires = FireEvent.query.all()
+        
+        # המרה של רשימת האובייקטים למילונים פשוטים שה-React יבין
+        return jsonify([fire.to_dict() for fire in active_fires]), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

@@ -70,3 +70,12 @@ class FireEvent(db.Model):
     
     # הקשר לנתונים הגולמיים
     raw_reads = db.relationship('FireIncident', backref='event', lazy=True)
+    
+    
+    def to_dict(self):
+        return {
+            "event_id": self.id,
+            "lat": self.latitude,
+            "lon": self.longitude,
+            # תוכל להוסיף כאן עוד שדות אם תרצה שהמפה תציג אותם
+        }
