@@ -1,7 +1,8 @@
 import os
 from flask import Flask
-from app.extensions import db
+from app.extensions import db, socketio
 from app.api.routes import api
+from flask_cors import CORS
 
 def create_app():
     app = Flask(__name__)
@@ -15,7 +16,9 @@ def create_app():
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     # אתחול ה-DB
+    CORS(app)
     db.init_app(app)
+    socketio.init_app(app)
 
     # רישום ה-Routes
     app.register_blueprint(api)
