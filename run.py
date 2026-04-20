@@ -1,3 +1,6 @@
+import gevent.monkey
+gevent.monkey.patch_all()
+
 from dotenv import load_dotenv # <--- הוספה חדשה
 import os
 from app.extensions import socketio
