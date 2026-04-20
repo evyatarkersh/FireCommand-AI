@@ -13,7 +13,7 @@ class LLMAgent:
             return
 
         self.client = Groq(api_key=self.api_key)
-        self.model_name = "llama-3.3-70b-versatile"
+        self.model_name = "llama-3.1-8b-instant"
         self.is_active = True
 
     def summarize_predictions(self, predictions_data):
