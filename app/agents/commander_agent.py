@@ -395,6 +395,46 @@ class CommanderAgent:
         else:
             return False
 
+    def step5_update_resource_locations(self):
+        """
+        מעדכן ישירות את המיקום של כל רכב 'בדרך' למיקום המדויק של השריפה שלו,
+        ומעביר אותו לסטטוס 'NOT_AVAILABLE' כדי שלא ייבחר שוב בסבב הבא.
+        """
+        from app.models.resources import Resource
+        from app.models.fire_events import FireEvent
+
+        # 1. שליפת כל הכלים שהאלגוריתם שלח הרגע (סטטוס EN_ROUTE)
+        dispatched_resources = Resource.query.filter_by(status='EN_ROUTE').all()
+
+        if not dispatched_resources:
+            print("   ℹ️ לא נמצאו רכבים בסטטוס EN_ROUTE לעדכון.")
+            return
+
+        print(f"\n📍 Updates: מעדכן מיקומי {len(dispatched_resources)} רכבים לנקודות הקצה של האירועים...")
+
+        for res in dispatched_resources:
+            if not res.assigned_event_id:
+                continue
+
+            # 2. שליפת האירוע שאליו הרכב שויך
+            target_fire = FireEvent.query.get(res.assigned_event_id)
+
+            if target_fire:
+                # 3. עדכון המיקום והסטטוס
+                res.current_lat = target_fire.latitude
+                res.current_lon = target_fire.longitude
+                res.status = 'NOT_AVAILABLE'
+
+                print(f"   ✅ רכב {res.id} ({res.resource_type}) הגיע לשריפה {target_fire.id} וסומן כלא-זמין.")
+
+        # 4. שמירה לדאטה-בייס
+        try:
+            db.session.commit()
+            print("   💾 שינויי מיקומים נשמרו בהצלחה.")
+        except Exception as e:
+            db.session.rollback()
+            print(f"   ❌ שגיאה בעדכון מיקומי רכבים: {e}")
+
     def _generate_and_save_district_summaries(self, llm_summary_json):
         """
         מקבלת את ה-JSON המסכם, שולחת אותו לסוכן ה-LLM לניסוח אנושי,
@@ -611,6 +651,8 @@ class CommanderAgent:
         print(json.dumps(master_llm_summary, indent=2, ensure_ascii=False))
 
         self._generate_and_save_district_summaries(master_llm_summary)
+
+        self.step5_update_resource_locations()
 
         return master_llm_summary
 
