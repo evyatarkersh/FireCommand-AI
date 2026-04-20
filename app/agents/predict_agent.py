@@ -3,6 +3,8 @@ from datetime import datetime
 from app.extensions import db
 from app.models.fire_events import FireEvent
 from app.agents.llm_agent import LLMAgent
+from app.extensions import socketio
+
 
 class FirePredictorAgent:
     def __init__(self):
@@ -38,6 +40,16 @@ class FirePredictorAgent:
                 print("   💾 Predictor: שומר את כל הפוליגונים המעודכנים ל-DB...")
                 db.session.commit()
                 print("   ✅ תחזיות נשמרו בהצלחה!")
+                
+                for event in events_to_predict: # תחליף במשתנה שלך שמחזיק את האירועים
+                    socketio.emit('prediction_update', {
+                        'event_id': event.id,
+                        'prediction_polygon': event.prediction_polygon, # וודא שזה השם של שדה ה-GeoJSON שלך
+                        'prediction_summary': event.prediction_summary
+                    })
+        # נשימה קטנה לשרת כמו שעשינו קודם
+                    socketio.sleep(0.05)   
+                
             except Exception as e:
                 db.session.rollback()
                 print(f"   ❌ Predictor Error (Commit Fail): {e}")

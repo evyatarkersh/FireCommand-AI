@@ -1,6 +1,7 @@
 from app.extensions import db
 from datetime import datetime
 from sqlalchemy.dialects.postgresql import JSONB
+import math
 
 
 class FireEvent(db.Model):
@@ -73,9 +74,28 @@ class FireEvent(db.Model):
     
     
     def to_dict(self):
+        from app.models.resources import Station # ייבוא מקומי למניעת Circular Import
+        all_stations = Station.query.all()
+        
+        # נמצא את המחוז של השריפה בשליפה (בדיוק כמו שהמפקד עושה)
+        # הערה: עדיף לשמור את המחוז כעמודה ב-DB כדי לחסוך חישוב כל פעם
+        district = "UNKNOWN"
+        closest_station = None
+        min_dist = float('inf')
+        for station in all_stations:
+            dist = math.sqrt((self.latitude - station.latitude)**2 + (self.longitude - station.longitude)**2)
+            if dist < min_dist:
+                min_dist = dist
+                closest_station = station
+        if closest_station:
+            district = closest_station.district
+
         return {
             "event_id": self.id,
             "lat": self.latitude,
             "lon": self.longitude,
-            # תוכל להוסיף כאן עוד שדות אם תרצה שהמפה תציג אותם
+            "intensity": self.frp,
+            "district": district, # <--- זה השדה הקריטי שחסר לריאקט!
+            "prediction_polygon": self.prediction_polygon,
+            "prediction_summary": getattr(self, 'prediction_summary', "מחשב תחזית...")
         }
