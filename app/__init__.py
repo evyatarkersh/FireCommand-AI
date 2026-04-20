@@ -25,6 +25,7 @@ def create_app():
         from app.models.nasa_fire import FireIncident  # וודא שזה שם הקובץ הנכון
         from app.models.fire_events import FireEvent
         from app.models.resources import Station, Resource
+        from app.models.commander_logs import CommandLog
         db.create_all()
 
         if Station.query.first() is None:

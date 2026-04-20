@@ -1,6 +1,7 @@
 import math
 import time
 import requests
+import pulp
 
 from shapely.geometry import shape
 from pyproj import Geod
@@ -127,6 +128,14 @@ class CommanderAgent:
         sdi_factor = self._calculate_sdi_factor(resource_type, terrain, slope)
 
         return base_rate * sdi_factor
+
+    def get_net_yield(self, resource_type, event, eta_hours, time_horizon_hours):
+        """ חישוב תפוקה נטו - מקזז את זמן הנסיעה מהזמן שנותר לבניית קו ההגנה """
+        if eta_hours >= time_horizon_hours:
+            return 0.0
+        working_time_hours = time_horizon_hours - eta_hours
+        actual_hourly_yield = self.get_actual_yield(resource_type, event)
+        return round(actual_hourly_yield * working_time_hours, 1)
 
     def _fetch_available_resources(self):
         """
@@ -270,6 +279,163 @@ class CommanderAgent:
 
         return matrix
 
+    def step4_optimize_and_dispatch(self, unsolved_fires, math_survivors, eta_matrix, time_horizon_hours, fire_demands,
+                                    allocated_in_this_cycle, available_supply, llm_summary, district_name):
+        """ מנוע ה-MILP לאופטימיזציית משאבים גלובלית ושיבוץ בפועל + איסוף ל-JSON """
+        print("     🧠 מפעיל מנוע אופטימיזציה גלובלית (MILP) לזירה...")
+        prob = pulp.LpProblem("Fire_Resource_Allocation", pulp.LpMinimize)
+
+        fire_ids = [f.id for f in unsolved_fires]
+        res_ids = [r.id for r in math_survivors]
+
+        fire_dict = {f.id: f for f in unsolved_fires}
+        res_dict = {r.id: r for r in math_survivors}
+
+        # משתנה בוליאני לכל שילוב של רכב ושריפה
+        assign_vars = pulp.LpVariable.dicts("Assign",
+                                            ((r, f) for r in res_ids for f in fire_ids),
+                                            cat='Binary')
+
+        # ==========================================
+        # 1. חישוב פונקציית המחיר התלת-שכבתית (Cost Matrix)
+        # ==========================================
+        costs = {}
+        for r in res_ids:
+            resource = res_dict[r]
+            # השכבה השנייה: קנס על עוצמת הכלי (כדי לשמור רזרבות)
+            resource_power_penalty = self.BASE_PRODUCTION_RATES.get(resource.resource_type, 0.0)
+
+            for f in fire_ids:
+                eta_hours = eta_matrix[r][f]
+
+                # בניית המחיר המשוקלל: סד"כ (10,000) > סוג כלי > זמן נסיעה
+                base_penalty = 10000.0
+                power_penalty = resource_power_penalty
+                time_penalty = eta_hours * 100.0
+
+                costs[r, f] = base_penalty + power_penalty + time_penalty
+
+        # ==========================================
+        # 2. הגדרת פונקציית המטרה החדשה
+        # ==========================================
+        # המנוע ינסה להביא את סך כל המחירים האלו למינימום
+        prob += pulp.lpSum(assign_vars[r, f] * costs[r, f] for r in res_ids for f in fire_ids), "Minimize_Total_Cost"
+
+        # אילוץ 1: כל רכב נשלח למקסימום שריפה אחת
+        for r in res_ids:
+            prob += pulp.lpSum(assign_vars[r, f] for f in fire_ids) <= 1
+
+        # אילוץ 2: סיפוק הדרישה לכל שריפה
+        for f in fire_ids:
+            current_fire = fire_dict[f]
+            demand = fire_demands[f]  # משתמשים בדרישה המעודכנת שנשארה
+
+            yield_sum = []
+            for r in res_ids:
+                eta_hours = eta_matrix[r][f]
+                net_yield = self.get_net_yield(res_dict[r].resource_type, current_fire, eta_hours, time_horizon_hours)
+                yield_sum.append(assign_vars[r, f] * net_yield)
+
+            prob += pulp.lpSum(yield_sum) >= demand
+
+        # פתרון ללא הודעות קונסול פנימיות
+        prob.solve(pulp.PULP_CBC_CMD(msg=False))
+
+        if pulp.LpStatus[prob.status] == 'Optimal':
+            print("     ✅ נמצא פתרון גלובלי אופטימלי לזירה (מבוסס עלות משוקללת)!")
+            saar_counters = {f: 0 for f in fire_ids}
+
+            # אתחול המחוז במילון ה-JSON
+            if district_name not in llm_summary:
+                llm_summary[district_name] = {}
+
+            # ביצוע השיבוצים בפועל ואיסוף הנתונים
+            for r in res_ids:
+                for f in fire_ids:
+                    if pulp.value(assign_vars[r, f]) == 1.0:
+                        selected_res = res_dict[r]
+                        target_fire = fire_dict[f]
+
+                        selected_res.status = 'EN_ROUTE'
+                        selected_res.assigned_event_id = target_fire.id
+                        allocated_in_this_cycle.add(selected_res.id)
+
+                        actual_eta_mins = eta_matrix[r][f] * 60
+                        print(
+                            f"       🚒 שובץ רכב {selected_res.resource_type} לשריפה {target_fire.id} (ETA: {actual_eta_mins:.1f} דק')")
+
+                        # --- איסוף ל-JSON ---
+                        fire_key = f"fire_{target_fire.id}"
+                        if fire_key not in llm_summary[district_name]:
+                            llm_summary[district_name][fire_key] = {
+                                "status": "RESOLVED",
+                                "location": {
+                                    "lat": target_fire.latitude,
+                                    "lon": target_fire.longitude
+                                },
+                                "resources": []
+                            }
+
+                        llm_summary[district_name][fire_key]["resources"].append({
+                            "type": selected_res.resource_type,
+                            "eta_minutes": round(actual_eta_mins, 1)
+                        })
+
+                        # נוהל Enabler
+                        if selected_res.resource_type == "SAAR":
+                            saar_counters[f] += 1
+                            if saar_counters[f] % 3 == 0:
+                                is_allocated = self._allocate_enabler_eshed(target_fire,
+                                                                            available_supply.get("ESHED", []),
+                                                                            allocated_in_this_cycle)
+                                if is_allocated:
+                                    llm_summary[district_name][fire_key]["resources"].append(
+                                        {"type": "ESHED (Water Supply)", "eta_minutes": "N/A"})
+            return True
+        else:
+            return False
+
+    def _generate_and_save_district_summaries(self, llm_summary_json):
+        """
+        מקבלת את ה-JSON המסכם, שולחת אותו לסוכן ה-LLM לניסוח אנושי,
+        ושומרת את התוצאות לטבלת "יומן מבצעים" בדאטה-בייס.
+        """
+        if not llm_summary_json:
+            return
+
+        import json
+        from app.extensions import db
+        from app.models.commander_logs import CommandLog
+        from app.agents.llm_agent import LLMAgent  # ודא שהנתיב נכון לפי מבנה הפרויקט שלכם
+
+        llm = LLMAgent()
+        print("\n🗣️ מעביר נתונים לסוכן הדוברות (LLM Agent) לניסוח סיכומים...")
+
+        for district, fires_data in llm_summary_json.items():
+            try:
+                # 1. יצירת הטקסט האנושי בעזרת סוכן ה-LLM
+                human_readable_text = llm.summarize_dispatch(district, fires_data)
+
+                print(f"   ✅ סוכם מחוז {district}:\n      {human_readable_text}\n")
+
+                # 2. שמירה לדאטה-בייס לטבלת יומן המבצעים
+                new_log = CommandLog(
+                    district_name=district,
+                    raw_json=fires_data,
+                    llm_summary_text=human_readable_text
+                )
+                db.session.add(new_log)
+
+            except Exception as e:
+                print(f"   ⚠️ שגיאה ביצירת סיכום LLM למחוז {district}: {e}")
+
+        # 3. Commit סופי של יומן המבצעים
+        try:
+            db.session.commit()
+            print("   💾 יומן המבצעים נשמר בהצלחה ב-DB.")
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ שגיאה בשמירת יומן המבצעים: {e}")
 
     def run_master_cycle(self):
         """
@@ -285,6 +451,8 @@ class CommanderAgent:
         print("==================================================")
 
         cycle_start_time = time.time()
+
+        master_llm_summary = {}
 
         # --- שלב 0: Setup והכנת זירות (מחוץ ללולאה) ---
         active_fires = FireEvent.query.filter(FireEvent.is_active == True).all()
@@ -397,12 +565,27 @@ class CommanderAgent:
 
                 if total_potential_yield >= total_district_demand:
                     print(f"     ✅ נמצאה היתכנות! (היצע: {total_potential_yield:.1f} | ביקוש: {total_district_demand:.1f})")
-                    
-                    # הקריאה לשלב 4 האמיתי תבוא כאן!
-                    # self.step4_optimize_and_dispatch(unsolved_fires, math_survivors, eta_matrix, ...)
-                    
-                    # בינתיים, לצורך השלד, נסמן את הזירה כפתורה כדי שהלולאה תתקדם
-                    for f in unsolved_fires: f.is_active = False 
+                    # --- הפעלת שלב 4 ---
+                    optimization_success = self.step4_optimize_and_dispatch(
+                        unsolved_fires=unsolved_fires,
+                        math_survivors=math_survivors,
+                        eta_matrix=eta_matrix,
+                        time_horizon_hours=target_hours,
+                        fire_demands=fire_demands,
+                        allocated_in_this_cycle=allocated_in_this_cycle,
+                        available_supply=available_supply,
+                        llm_summary=master_llm_summary,
+                        district_name=district_name
+                    )
+
+                    if optimization_success:
+                        # רק אם המנוע הצליח לשבץ, נסמן את השריפות האלו כפתורות
+                        for f in unsolved_fires:
+                            f.is_active = False
+                        print(f"     🎯 זירת {district_name} פוצחה בהצלחה ומשאבים שובצו.")
+                    else:
+                        print(f"     ⚠️ למרות היתכנות תיאורטית, המנוע לא מצא חלוקה חוקית. ממתין להרחבת חלון זמן.")
+                    # --- סוף הפעלת שלב 4 ---
                 else:
                     print(f"     ❌ אין מספיק כוח (חסר {total_district_demand - total_potential_yield:.1f} מטרים). ממתין להרחבת חלון הזמן.")
 
@@ -419,6 +602,17 @@ class CommanderAgent:
 
         total_elapsed = time.time() - cycle_start_time
         print(f"\n⏱️ Master Cycle הסתיים תוך {total_elapsed:.2f} שניות סה\"כ.")
+
+        # ==========================================
+        # יצירת סיכומי הדוברות (LLM) ושמירה ליומן
+        # ==========================================
+        import json
+        print("\n📝 JSON סיכום שנאסף:")
+        print(json.dumps(master_llm_summary, indent=2, ensure_ascii=False))
+
+        self._generate_and_save_district_summaries(master_llm_summary)
+
+        return master_llm_summary
 
     def _get_driving_eta_minutes(self, start_lon, start_lat, dest_lon, dest_lat):
         """

@@ -63,3 +63,53 @@ class LLMAgent:
         except Exception as e:
             print(f"❌ LLM Agent Error: {e}")
             return "⚠️ Error generating the operational summary."
+
+    def summarize_dispatch(self, district_name, dispatch_data):
+        """
+        מקבלת שם מחוז ואת ה-JSON של שיבוץ הכוחות,
+        ומחזירה דיווח מבצעי אנושי המיועד למפקד הזירה.
+        """
+        if not self.is_active:
+            return "⚠️ LLM Agent is inactive."
+
+        if not dispatch_data:
+            return "✅ No resources were dispatched in this cycle."
+
+        print(f"🤖 LLM Agent: Generating operational dispatch summary for {district_name} district...")
+
+        data_str = json.dumps(dispatch_data, ensure_ascii=False, indent=2)
+
+        prompt = f"""
+        You are the Chief Dispatcher for the Fire and Rescue Service.
+        The AI Commander Agent has just optimized and dispatched resources to active fires in the '{district_name}' district.
+
+        Here is the JSON output of the assignments:
+        {data_str}
+
+        Task:
+        Provide a concise, professional, and tactical Situation Report (SitRep) summarizing these dispatch decisions.
+
+        Guidelines:
+        * Start with a strong operational header (e.g., "🚒 Dispatch Summary: {district_name} District").
+        * List the fires that received resources.
+        * Next to each fire event, explicitly state its exact location coordinates (Lat/Lon) exactly as provided in the JSON.
+        * Detail the types of resources dispatched to each fire and their Estimated Time of Arrival (ETA).
+        * If an 'ESHED' (Water Supply) vehicle was dispatched, mention it clearly as it is a critical enabler.
+        * Keep it brief, bulleted, and strictly based on the provided JSON.
+        """
+
+        try:
+            chat_completion = self.client.chat.completions.create(
+                messages=[
+                    ChatCompletionUserMessageParam(
+                        role="user",
+                        content=prompt,
+                    )
+                ],
+                model=self.model_name,
+            )
+            return chat_completion.choices[0].message.content
+
+        except Exception as e:
+            print(f"❌ LLM Agent Error during dispatch summary: {e}")
+            return f"⚠️ Error generating the operational summary for {district_name}."
