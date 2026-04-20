@@ -12,6 +12,7 @@ from app.agents.fuel_agent import enrich_with_fuel
 from concurrent.futures import ThreadPoolExecutor, wait
 from flask import current_app
 from app.agents.commander_agent import CommanderAgent
+from app.extensions import socketio
 
 
 class MonitorAgent:
@@ -108,6 +109,14 @@ class MonitorAgent:
             print("💾 Committing all changes to DB...")
             db.session.commit()
             print("✅ Monitor cycle finished and saved successfully.")
+            
+            print(f"📡 Broadcasting {len(events_to_enrich)} events to connected dashboards...")
+            for event in events_to_enrich:
+                fire_data = event.to_dict() # אנחנו משתמשים בפונקציה שהוספת למודל!
+                socketio.emit('new_fire', fire_data)
+                socketio.sleep(0.1) 
+                print(f"✅ שודרה שריפה {event.id} לרשת.")
+            
         except Exception as e:
             db.session.rollback()
             print(f"❌ Monitor Error (Critical Commit Fail): {e}")

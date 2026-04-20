@@ -1,0 +1,50 @@
+.fire-emoji-container {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 30px;
+  height: 30px;
+  /* קריטי: מונע מהמפה לחתוך את גלי ההדף כשהם גדלים */
+  overflow: visible !important; 
+}
+
+/* עיצוב האימוג'י עצמו */
+.fire-emoji {
+  position: relative;
+  z-index: 2; /* מוודא שהאש תמיד מעל הגלים */
+  text-shadow: 0 0 5px rgba(0, 0, 0, 0.8); /* צל שחור כדי להבליט את האש על המפה */
+  /* נותן לאש עצמה אפקט "נשימה" עדין מאוד */
+  animation: fireBreathe 1s ease-in-out infinite alternate;
+}
+
+/* טבעת הגלים שיוצאת מהאש */
+.pulse-ring {
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  background-color: rgba(255, 81, 0, 0.5); /* צבע כתום-אדום שקוף */
+  border-radius: 50%;
+  z-index: 1; /* מאחורי האימוג'י */
+  /* האנימציה שמרחיבה ומעלימה את הטבעת */
+  animation: emojiPulse 2s ease-out infinite;
+  pointer-events: none; /* שהטבעת לא תפריע ללחוץ על המפה */
+}
+
+/* אנימציית נשימה לאימוג'י */
+@keyframes fireBreathe {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.15); }
+}
+
+/* אנימציית הפעימה (הגל) */
+@keyframes emojiPulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(4); /* הגל מתרחב פי 4 מגודלו */
+    opacity: 0; /* ונעלם בהדרגה */
+  }
+}

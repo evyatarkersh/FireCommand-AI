@@ -7,6 +7,7 @@ from shapely.geometry import shape
 from pyproj import Geod
 from app.extensions import db
 from app.models.fire_events import FireEvent
+from app.extensions import socketio
 
 class CommanderAgent:
     """
@@ -425,6 +426,14 @@ class CommanderAgent:
                     llm_summary_text=human_readable_text
                 )
                 db.session.add(new_log)
+                
+                # --- התוספת שלנו לשידור חי לריאקט ---
+                print(f"📡 משדר סיכום מפקד למחוז {district} דרך WebSockets...")
+                socketio.emit('commander_update', {
+                    'district': district,
+                    'summary': human_readable_text
+                })
+                # ------------------------------------
 
             except Exception as e:
                 print(f"   ⚠️ שגיאה ביצירת סיכום LLM למחוז {district}: {e}")
@@ -596,6 +605,7 @@ class CommanderAgent:
         try:
             db.session.commit()
             print("💾 מחזור הפיקוד הסתיים. שיבוצים נשמרו בהצלחה.")
+            
         except Exception as e:
             db.session.rollback()
             print(f"❌ שגיאה בשמירת השיבוצים: {e}")
