@@ -42,8 +42,8 @@ body {
   border-radius: 6px;
   padding: 12px;
   margin-top: 15px;
-  direction: rtl;
-  text-align: right;
+  direction: ltr;
+  text-align: left;
 }
 
 .ai-summary {
@@ -60,6 +60,12 @@ body {
   text-align: left;
 }
 
+.ai-summary {
+    white-space: pre-wrap;
+    /* הוספת ריווח קטן כדי שהטקסט לא יידבק לקצוות */
+    padding: 5px; 
+}
+
 .tag {
   display: inline-block;
   background: #333;
@@ -73,12 +79,47 @@ body {
 
 /* App.css */
 
-.ai-summary p, 
-.commander-recommendation p {
-  margin: 0 0 10px 0; /* רווח קטן בין פסקאות */
+.ai-summary p, .commander-recommendation p {
+    margin: 0 !important; /* מבטל את הרווח בין פסקאות */
+    padding: 0 !important;
 }
 
-.ai-summary strong, 
-.commander-recommendation strong {
-  color: #ff9d00; /* הופך את הטקסט המודגש בתוך המארקדאון לכתום בולט */
+
+.ai-summary strong {
+    color: #ff9d00;
+    display: inline-block;
+    margin-top: 5px;
+}
+
+/* עיצוב מודרני לפס הגלילה (Scrollbar) של הפיד */
+.sidebar-container ::-webkit-scrollbar {
+  width: 8px;
+}
+.sidebar-container ::-webkit-scrollbar-track {
+  background: #121212;
+}
+.sidebar-container ::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 4px;
+}
+.sidebar-container ::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* אפקט Hover לכרטיסים שירגישו לחיצים */
+.event-card {
+  transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer; /* הופך את העכבר ליד לוחצת */
+}
+
+.event-card:hover {
+  transform: translateY(-2px);
+  background-color: #252525;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+}
+
+/* המחלקה שתופעל כשהמשתמש לוחץ על אירוע במפה או בפיד */
+.event-card.focused {
+  border-right: 6px solid #00ff0d; /* מדגיש את הפס בירוק או כל צבע שתבחר */
+  background-color: #2a2a2a;
 }

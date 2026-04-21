@@ -19,6 +19,11 @@ function App() {
   const [fires, setFires] = useState([]);
   // הסטייט של המלצות המפקד - עבר לתוך הפונקציה
   const [districtSummaries, setDistrictSummaries] = useState({});
+  // שומר את ה-ID של האירוע עליו המפקד מסתכל כרגע
+  const [focusedFireId, setFocusedFireId] = useState(null);
+  const [selectedDistrict, setSelectedDistrict] = useState("All");
+
+  const uniqueDistricts = ["All", ...new Set(fires.map(f => f.district).filter(Boolean))];
 
   useEffect(() => {
     fetch(`${BACKEND_URL}/active-fires`)
@@ -64,42 +69,126 @@ function App() {
     return () => socket.disconnect();
   }, []);
 
+  // פונקציה כשלוחצים על כרטיס בפיד
+  const handleCardClick = (fire) => {
+    setFocusedFireId(fire.event_id);
+    setViewState({
+      ...viewState,
+      longitude: fire.lon,
+      latitude: fire.lat,
+      zoom: 12, // זום קרוב
+      transitionDuration: 1000 // אנימציית טיסה חלקה של שנייה
+    });
+  };
+
+  // פונקציה כשלוחצים על מרקר במפה
+  const handleMarkerClick = (e, fire) => {
+    e.originalEvent.stopPropagation(); // מונע מהלחיצה לעבור למפה עצמה
+    setFocusedFireId(fire.event_id);
+
+    // מטיס את המפה
+    setViewState({
+      ...viewState,
+      longitude: fire.lon,
+      latitude: fire.lat,
+      zoom: 12,
+      transitionDuration: 1000
+    });
+
+    // גולל את הפיד בצד ישר לכרטיס המתאים!
+    const cardElement = document.getElementById(`fire-card-${fire.event_id}`);
+    if (cardElement) {
+      cardElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
+
   return (
     <div style={{ display: 'flex', width: '100vw', height: '100vh', direction: 'ltr', backgroundColor: '#000' }}>
 
       {/* 1. פאנל צדדי (Sidebar) */}
       <div className="sidebar-container">
         <div style={{ padding: '20px', borderBottom: '1px solid #333', background: '#1a1a1a' }}>
-          <h2 style={{ color: '#ff4400', margin: 0, fontSize: '1.4rem' }}>📡 Live Feed</h2>
+          <h2 style={{ color: '#ff4400', margin: 0, fontSize: '1.4rem', direction: 'ltr' }}>📡 Live Feed</h2>
         </div>
 
+        {/* שורת סינון מחוזות (District Filter) */}
+        {uniqueDistricts.length > 1 && (
+          <div style={{
+            padding: '10px 20px',
+            borderBottom: '1px solid #333',
+            background: '#121212',
+            display: 'flex',
+            gap: '8px',
+            overflowX: 'auto', // מאפשר גלילה אופקית אם יש הרבה מחוזות
+            whiteSpace: 'nowrap'
+          }}>
+            {uniqueDistricts.map(district => (
+              <button
+                key={district}
+                onClick={() => setSelectedDistrict(district)}
+                style={{
+                  backgroundColor: selectedDistrict === district ? '#ff4400' : '#2a2a2a',
+                  color: selectedDistrict === district ? '#fff' : '#aaa',
+                  border: 'none',
+                  borderRadius: '20px',
+                  padding: '6px 14px',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  fontWeight: selectedDistrict === district ? 'bold' : 'normal'
+                }}
+              >
+                {district === "All" ? "All" : district}
+              </button>
+            ))}
+          </div>
+        )}
+
+
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          {fires.length === 0 ? (
-            <p style={{ color: '#888', padding: '20px', textAlign: 'center' }}>ממתין לנתונים...</p>
-          ) : (
-            [...fires].reverse().map(fire => (
-              <div key={fire.event_id} className="event-card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', direction: 'rtl' }}>
-                  <strong style={{ color: '#fff' }}>🔥 אירוע #{fire.event_id}</strong>
+          {(() => {
+            // 1. קודם כל מסננים את השריפות לפי המחוז שנבחר
+            const filteredFires = selectedDistrict === "All"
+              ? fires
+              : fires.filter(f => f.district === selectedDistrict);
+
+            // 2. בדיקות מצב ריק
+            if (fires.length === 0) {
+              return <p style={{ color: '#888', padding: '20px', textAlign: 'center' }}>....Waiting for data</p>;
+            }
+            if (filteredFires.length === 0) {
+              return <p style={{ color: '#888', padding: '20px', textAlign: 'center' }}>No active events in this district.</p>;
+            }
+
+            // 3. מרנדרים רק את השריפות המסוננות
+            return [...filteredFires].reverse().map(fire => (
+              <div
+                id={`fire-card-${fire.event_id}`} /* חשוב כדי שהגלילה תדע לאן ללכת */
+                key={fire.event_id}
+                className={`event-card ${focusedFireId === fire.event_id ? 'focused' : ''}`}
+                onClick={() => handleCardClick(fire)}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', direction: 'ltr' }}>
+                  <strong style={{ color: '#fff' }}>🔥 Event #{fire.event_id}</strong>
                   <span style={{ color: '#888', fontSize: '0.8rem' }}>
                     {new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
 
-                {/* סיכום חיזוי מעוצב */}
-                <div className="ai-summary">
+                {/* סיכום חיזוי מעוצב - שינוי עדין ליישור */}
+                <div className="ai-summary" style={{ direction: 'ltr', textAlign: 'left' }}>
                   <ReactMarkdown>
-                    {fire.prediction_summary || "מחשב תחזית AI..."}
+                    {fire.prediction_summary || "Computing Prediction and Recommendation"}
                   </ReactMarkdown>
                 </div>
 
-                {/* המלצת מפקד מעוצבת */}
+                {/* המלצת מפקד - שינוי עדין ליישור הטקסט הפנימי בלבד */}
                 {districtSummaries[fire.district] && (
                   <div className="commander-recommendation">
-                    <strong style={{ color: '#00ff0d', fontSize: '0.9rem', display: 'block', marginBottom: '5px' }}>
-                      👨‍✈️ הנחיית אופטימיזציה מחוזית:
+                    <strong style={{ color: '#00ff0d', fontSize: '0.9rem', display: 'block', marginBottom: '5px', direction: 'ltr' }}>
+                      👨‍✈️ District recommendation:
                     </strong>
-                    <div style={{ fontSize: '0.95rem', color: '#fff', lineHeight: '1.4' }}>
+                    <div style={{ fontSize: '0.95rem', color: '#fff', lineHeight: '1.4', direction: 'ltr', textAlign: 'left' }}>
                       <ReactMarkdown>
                         {districtSummaries[fire.district]}
                       </ReactMarkdown>
@@ -108,12 +197,12 @@ function App() {
                 )}
 
                 <div style={{ marginTop: '10px', direction: 'rtl' }}>
-                  <span className="tag">עוצמה: {fire.intensity}</span>
-                  {fire.prediction_polygon && <span className="tag" style={{ color: '#44ff44' }}>🛡️ חיזוי פעיל</span>}
+                  <span className="tag" style={{ fontSize: '1rem' }}>Intensity: {fire.intensity}</span>
+                  {fire.prediction_polygon && <span className="tag" style={{ color: '#44ff44' }}>Active Prediction 🛡️</span>}
                 </div>
               </div>
-            ))
-          )}
+            ));
+          })()}
         </div>
       </div>
 
@@ -133,7 +222,13 @@ function App() {
                   <Layer id={`outline-${fire.event_id}`} type="line" paint={{ 'line-color': '#ff4400', 'line-width': 2, 'line-dasharray': [2, 2] }} />
                 </Source>
               )}
-              <Marker latitude={fire.lat} longitude={fire.lon} anchor="center">
+              <Marker
+                latitude={fire.lat}
+                longitude={fire.lon}
+                anchor="center"
+                onClick={(e) => handleMarkerClick(e, fire)}
+                style={{ cursor: 'pointer' }}
+              >
                 <TacticalFireMarker intensity={fire.intensity} />
               </Marker>
             </React.Fragment>
