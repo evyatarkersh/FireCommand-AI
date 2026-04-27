@@ -50,7 +50,7 @@ def create_app():
             run_full_system_sync()
 
     # מוסיף משימה שרצה כל 5 דקות
-    scheduler.add_job(func=job, trigger="interval", minutes=5, next_run_time=datetime.now() + timedelta(seconds=15))
+    scheduler.add_job(func=job, trigger="interval", minutes=5, next_run_time=datetime.now() + timedelta(seconds=60))
     scheduler.start()
 
     return app
