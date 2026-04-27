@@ -3,7 +3,7 @@ from flask import Flask
 from app.extensions import db, socketio
 from app.api.routes import api
 from flask_cors import CORS
-from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.gevent import GeventScheduler
 from datetime import datetime
 
 def create_app():
@@ -39,7 +39,7 @@ def create_app():
             seed_real_israel_stations()
 
     # הגדרת הריצה האוטומטית
-    scheduler = BackgroundScheduler()
+    scheduler = GeventScheduler()
 
     def job():
         with app.app_context():
