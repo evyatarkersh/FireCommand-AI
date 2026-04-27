@@ -3,6 +3,8 @@ from flask import Flask
 from app.extensions import db, socketio
 from app.api.routes import api
 from flask_cors import CORS
+from apscheduler.schedulers.background import BackgroundScheduler
+from datetime import datetime
 
 def create_app():
     app = Flask(__name__)
@@ -35,5 +37,19 @@ def create_app():
             print("Empty station database detected. Starting initial data seeding")
             from app.services.seed_resources import seed_real_israel_stations
             seed_real_israel_stations()
+
+    # הגדרת הריצה האוטומטית
+    scheduler = BackgroundScheduler()
+
+    def job():
+        with app.app_context():
+            # קורא לפונקציה שהוצאנו בצעד הקודם
+            from app.api.routes import run_full_system_sync
+            print(f"⏰ {datetime.now().strftime('%H:%M:%S')} - Starting scheduled sync cycle...")
+            run_full_system_sync()
+
+    # מוסיף משימה שרצה כל 5 דקות
+    scheduler.add_job(func=job, trigger="interval", minutes=5, next_run_time=datetime.now())
+    scheduler.start()
 
     return app
