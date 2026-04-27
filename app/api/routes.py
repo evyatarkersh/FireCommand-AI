@@ -181,3 +181,27 @@ def get_active_fires():
         return jsonify([fire.to_dict() for fire in active_fires]), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+def run_full_system_sync():
+    """הלוגיקה שאתה כבר כתבת, בתוך פונקציה שאפשר לקרוא לה מכל מקום"""
+    start_time = time.time()
+    results = {}
+    try:
+        # 1. NASA Ingestion
+        nasa_service = NasaIngestionService()
+        fires_data = nasa_service.fetch_and_save_fires(days_back=5)
+        results['nasa_ingestion'] = {
+            "status": "success",
+            "fires_count": fires_data.get("new_fires_added", 0)
+        }
+
+        # 2. Monitor Cycle
+        monitor_agent = MonitorAgent()
+        monitor_agent.run_cycle()
+        results['monitor_cycle'] = {"status": "success"}
+
+        print(f"✅ Sync completed in {time.time() - start_time:.2f}s")
+        return results
+    except Exception as e:
+        print(f"❌ Sync failed: {e}")
+        return {"error": str(e)}
