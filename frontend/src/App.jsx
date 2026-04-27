@@ -185,9 +185,6 @@ function App() {
                 {/* המלצת מפקד - שינוי עדין ליישור הטקסט הפנימי בלבד */}
                 {districtSummaries[fire.district] && (
                   <div className="commander-recommendation">
-                    <strong style={{ color: '#00ff0d', fontSize: '0.9rem', display: 'block', marginBottom: '5px', direction: 'ltr' }}>
-                      👨‍✈️ District recommendation:
-                    </strong>
                     <div style={{ fontSize: '0.95rem', color: '#fff', lineHeight: '1.4', direction: 'ltr', textAlign: 'left' }}>
                       <ReactMarkdown>
                         {districtSummaries[fire.district]}

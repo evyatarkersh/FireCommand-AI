@@ -3,7 +3,6 @@ import json
 from groq import Groq
 from groq.types.chat import ChatCompletionUserMessageParam
 
-
 class LLMAgent:
     def __init__(self):
         self.api_key = os.getenv("GROQ_API_KEY")
@@ -13,8 +12,44 @@ class LLMAgent:
             return
 
         self.client = Groq(api_key=self.api_key)
-        self.model_name = "llama-3.1-8b-instant"
+        
+        # 1. הגדרת שני המודלים שלנו (המועדף והגיבוי)
+        self.primary_model = "llama-3.3-70b-versatile" # המודל החזק, החכם (והיקר)
+        self.fallback_model = "llama-3.1-8b-instant"   # המודל הקטן, המהיר (לגיבוי)
+        
         self.is_active = True
+
+    def _call_llm_with_fallback(self, prompt, context_name="LLM"):
+        """
+        פונקציית עזר פנימית שמנהלת את הניסיונות מול Groq.
+        מנסה קודם את המודל הראשי. אם נכשל, עוברת אוטומטית לגיבוי.
+        """
+        try:
+            # ניסיון 1: המודל הראשי (70B)
+            chat_completion = self.client.chat.completions.create(
+                messages=[ChatCompletionUserMessageParam(role="user", content=prompt)],
+                model=self.primary_model,
+            )
+            return chat_completion.choices[0].message.content
+
+        except Exception as e:
+            error_msg = str(e)
+            print(f"⚠️ {context_name}: Primary model ({self.primary_model}) failed. Reason: {error_msg}")
+            
+            # אם השגיאה היא Rate Limit או סתם עומס, נפעיל את הגיבוי
+            print(f"🔄 {context_name}: Falling back to backup model ({self.fallback_model})...")
+            
+            try:
+                # ניסיון 2: מודל הגיבוי (8B)
+                chat_completion_fallback = self.client.chat.completions.create(
+                    messages=[ChatCompletionUserMessageParam(role="user", content=prompt)],
+                    model=self.fallback_model,
+                )
+                return chat_completion_fallback.choices[0].message.content
+                
+            except Exception as fallback_error:
+                print(f"❌ {context_name}: Fallback model ALSO failed! Error: {fallback_error}")
+                return f"⚠️ Error: LLM completely unavailable for {context_name}."
 
     def summarize_predictions(self, predictions_data):
         if not self.is_active:
@@ -23,7 +58,7 @@ class LLMAgent:
         if not predictions_data:
             return "✅ No new predictions to summarize."
 
-        print("🤖 LLM Agent: Translating prediction data into human-readable summary (via Groq)...")
+        print("🤖 LLM Agent: Translating prediction data into human-readable summary...")
 
         data_str = json.dumps(predictions_data, ensure_ascii=False, indent=2)
 
@@ -35,34 +70,24 @@ class LLMAgent:
         {data_str}
 
         Task:
-        Provide a concise, tactical Situation Report (SitRep) for the field units in English.
-        For each event, include:
+        Provide a highly concise, tactical Situation Report (SitRep).
 
-        * Event ID & Risk Level: State the ID and highlight the 'risk_level' (e.g., MODERATE, HIGH, EXTREME).
-        * Fire Behavior: 
-          - Translate the 'spread_direction_azimuth' into a compass direction (e.g., North-East).
-          - Mention the Rate of Spread (ROS) in meters per hour.
-          - State the 'flame_length_meters'. Explain briefly what this means tactically (e.g., "Flame lengths over 2.5m mean direct attack by ground crews is highly dangerous").
-        * Driving Forces: Briefly mention how the 'fuel_type' and wind are affecting this prediction.
+        STRICT FORMATTING RULES:
+        1. DO NOT write any introductory or concluding sentences (e.g., NO "Here is the SitRep...").
+        2. DO NOT use nested bullet points.
+        3. DO NOT leave empty lines (double line breaks) between bullets.
+        4. Use EXACTLY this format for the output:
 
-        Keep it brief, bulleted, and strictly based on the provided JSON. Do not invent metrics.
+        **SitRep | Risk: [MODERATE/HIGH/EXTREME]**
+        * **Behavior:** Spreading [Compass Direction] at [ROS] m/h.
+        * **Tactical:** Flame length [Length]m. [Brief 3-5 word tactical meaning, e.g., "Direct attack dangerous"].
+        * **Drivers:** Fueled by [Fuel Type] with wind effects.
+
+        Keep it strictly to the facts provided. Do not invent metrics.
         """
 
-        try:
-            chat_completion = self.client.chat.completions.create(
-                messages=[
-                    ChatCompletionUserMessageParam(
-                        role="user",
-                        content=prompt,
-                    )
-                ],
-                model=self.model_name,
-            )
-            return chat_completion.choices[0].message.content
-
-        except Exception as e:
-            print(f"❌ LLM Agent Error: {e}")
-            return "⚠️ Error generating the operational summary."
+        # שימוש במנגנון ה-Fallback החדש
+        return self._call_llm_with_fallback(prompt, context_name="Prediction Summary")
 
     def summarize_dispatch(self, district_name, dispatch_data):
         """
@@ -81,35 +106,20 @@ class LLMAgent:
 
         prompt = f"""
         You are the Chief Dispatcher for the Fire and Rescue Service.
-        The AI Commander Agent has just optimized and dispatched resources to active fires in the '{district_name}' district.
-
-        Here is the JSON output of the assignments:
+        Write a tactical dispatch summary for the '{district_name}' district based ONLY on this JSON:
         {data_str}
 
-        Task:
-        Provide a concise, professional, and tactical Situation Report (SitRep) summarizing these dispatch decisions.
+        STRICT FORMATTING RULES:
+        1. DO NOT write any introductory or concluding sentences (e.g., strictly NO "The following fires...", NO "Please note...").
+        2. Start directly with the header on the first line: **🚒 Dispatch Summary: {district_name} District**
+        3. For each fire, use exactly ONE bullet point formatted EXACTLY like this:
+           * **Event [ID]** ([Lat], [Lon]): [Number]x [Type] units (ETA: [Time] min).
+        4. If an ESHED is dispatched, append it to the same line: " + ESHED assigned". 
+        5. If no ESHED is dispatched, DO NOT mention it at all.
+        6. DO NOT add double line breaks (empty lines) between bullet points.
 
-        Guidelines:
-        * Start with a strong operational header (e.g., "🚒 Dispatch Summary: {district_name} District").
-        * List the fires that received resources.
-        * Next to each fire event, explicitly state its exact location coordinates (Lat/Lon) exactly as provided in the JSON.
-        * Detail the types of resources dispatched to each fire and their Estimated Time of Arrival (ETA).
-        * If an 'ESHED' (Water Supply) vehicle was dispatched, mention it clearly as it is a critical enabler.
-        * Keep it brief, bulleted, and strictly based on the provided JSON.
+        Output ONLY the requested markdown text and nothing else.
         """
-
-        try:
-            chat_completion = self.client.chat.completions.create(
-                messages=[
-                    ChatCompletionUserMessageParam(
-                        role="user",
-                        content=prompt,
-                    )
-                ],
-                model=self.model_name,
-            )
-            return chat_completion.choices[0].message.content
-
-        except Exception as e:
-            print(f"❌ LLM Agent Error during dispatch summary: {e}")
-            return f"⚠️ Error generating the operational summary for {district_name}."
+        
+        # שימוש במנגנון ה-Fallback החדש
+        return self._call_llm_with_fallback(prompt, context_name=f"Dispatch {district_name}")

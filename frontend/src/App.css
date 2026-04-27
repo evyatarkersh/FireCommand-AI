@@ -79,16 +79,40 @@ body {
 
 /* App.css */
 
-.ai-summary p, .commander-recommendation p {
-    margin: 0 !important; /* מבטל את הרווח בין פסקאות */
-    padding: 0 !important;
+/* --- תיקון עיצוב מתקדם ל-ReactMarkdown --- */
+
+/* 1. טיפול בפסקאות (שורות טקסט רגילות) */
+.ai-summary p, 
+.commander-recommendation p {
+  margin: 0 0 6px 0 !important; /* משאיר רק רווח קטן בתחתית */
+  padding: 0 !important;
+  line-height: 1.4;
 }
 
+/* 2. טיפול ברשימות (כאן בדרך כלל מסתתרים הרווחים הגדולים) */
+.ai-summary ul, 
+.commander-recommendation ul {
+  margin: 4px 0 8px 0 !important;
+  padding-left: 20px !important; /* הזחה שמאלה מדויקת כדי לראות את הנקודה */
+}
 
-.ai-summary strong {
-    color: #ff9d00;
-    display: inline-block;
-    margin-top: 5px;
+/* 3. טיפול בשורות עצמן בתוך הרשימה */
+.ai-summary li, 
+.commander-recommendation li {
+  margin-bottom: 4px !important; /* מצופף את הבולטים אחד לשני */
+  line-height: 1.4;
+}
+
+/* 4. טיפול בטקסט מודגש (מבטל את קפיצות השורה) */
+.ai-summary strong, 
+.commander-recommendation strong {
+  color: #ffb700;
+  font-weight: bold;
+}
+
+/* 5. שינוי צבע להדגשות ספציפיות של המפקד (למשל ETA) */
+.commander-recommendation strong {
+  color: #00ff0d; /* שומר על הצבע הירוק באזור של המפקד */
 }
 
 /* עיצוב מודרני לפס הגלילה (Scrollbar) של הפיד */
