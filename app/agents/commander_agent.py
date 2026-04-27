@@ -473,6 +473,7 @@ class CommanderAgent:
                     'district': district,
                     'summary': human_readable_text
                 })
+                print("emited commander_update event to WebSocket clients.")
                 # ------------------------------------
 
             except Exception as e:

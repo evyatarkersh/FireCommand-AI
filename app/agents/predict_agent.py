@@ -47,6 +47,7 @@ class FirePredictorAgent:
                         'prediction_polygon': event.prediction_polygon, # וודא שזה השם של שדה ה-GeoJSON שלך
                         'prediction_summary': event.prediction_summary
                     })
+                    print("emitted prediction update for event", event.id)
         # נשימה קטנה לשרת כמו שעשינו קודם
                     socketio.sleep(0.05)   
                 
