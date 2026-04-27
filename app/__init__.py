@@ -5,6 +5,7 @@ from app.api.routes import api
 from flask_cors import CORS
 from apscheduler.schedulers.gevent import GeventScheduler
 from datetime import datetime
+from datetime import timedelta
 
 def create_app():
     app = Flask(__name__)
@@ -49,7 +50,7 @@ def create_app():
             run_full_system_sync()
 
     # מוסיף משימה שרצה כל 5 דקות
-    scheduler.add_job(func=job, trigger="interval", minutes=5, next_run_time=datetime.now())
+    scheduler.add_job(func=job, trigger="interval", minutes=5, next_run_time=datetime.now() + timedelta(seconds=15))
     scheduler.start()
 
     return app
