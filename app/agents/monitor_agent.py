@@ -114,6 +114,7 @@ class MonitorAgent:
             for event in events_to_enrich:
                 fire_data = event.to_dict() # אנחנו משתמשים בפונקציה שהוספת למודל!
                 socketio.emit('new_fire', fire_data)
+                print("emitted event:", fire_data)
                 socketio.sleep(0.1) 
                 print(f"✅ שודרה שריפה {event.id} לרשת.")
             

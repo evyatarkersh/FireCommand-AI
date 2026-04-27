@@ -42,6 +42,7 @@ function App() {
     const socket = io(BACKEND_URL);
 
     socket.on('new_fire', (fireData) => {
+      console.log('🔥 new_fire received:', fireData);
       setFires(prev => {
         const idx = prev.findIndex(f => f.event_id === fireData.event_id);
         if (idx >= 0) {
@@ -54,6 +55,7 @@ function App() {
     });
 
     socket.on('prediction_update', (updateData) => {
+      console.log('🛡️ prediction_update received:', updateData);
       setFires(prev => prev.map(fire =>
         fire.event_id === updateData.event_id
           ? {
