@@ -172,13 +172,31 @@ def trigger_fire():
 @api.route('/active-fires', methods=['GET'])
 def get_active_fires():
     try:
-        # שליפת כל אירועי השריפה הפעילים מה-DB
-        # (השתמשתי ב-FireEvent, וודא שזה השם הנכון אצלך)
         from app.models.fire_events import FireEvent
+        from app.models.commander_logs import CommandLog
+
+        # 1. שליפת כל אירועי השריפה הפעילים והמרתם למילון
         active_fires = FireEvent.query.all()
+        fires_list = [fire.to_dict() for fire in active_fires]
         
-        # המרה של רשימת האובייקטים למילונים פשוטים שה-React יבין
-        return jsonify([fire.to_dict() for fire in active_fires]), 200
+        # 2. **התיקון:** שולפים את המחוז מתוך המילון (f.get) ולא מהאובייקט
+        active_districts = set(f.get('district') for f in fires_list if f.get('district'))
+        
+        # 3. שליפת ההמלצה הכי עדכנית מיומן המבצעים לכל מחוז פעיל
+        summaries = {}
+        for district in active_districts:
+            latest_log = CommandLog.query.filter_by(district_name=district)\
+                .order_by(CommandLog.timestamp.desc())\
+                .first()
+            if latest_log:
+                summaries[district] = latest_log.llm_summary_text
+        
+        # 4. החזרת אובייקט משולב
+        return jsonify({
+            "fires": fires_list,
+            "summaries": summaries
+        }), 200
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

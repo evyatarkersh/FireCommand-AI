@@ -28,8 +28,16 @@ function App() {
   useEffect(() => {
     fetch(`${BACKEND_URL}/active-fires`)
       .then(res => res.json())
-      .then(data => setFires(Array.isArray(data) ? data : []))
-      .catch(err => console.error("Error:", err));
+      .then(data => {
+        // עדכון רשימת השריפות
+        setFires(Array.isArray(data.fires) ? data.fires : []);
+        
+        // עדכון סיכומי המחוזות מהדאטה-בייס כדי שלא ייעלמו ברענון
+        if (data.summaries) {
+          setDistrictSummaries(data.summaries);
+        }
+      })
+      .catch(err => console.error("Error loading initial data:", err));
 
     const socket = io(BACKEND_URL);
 
@@ -108,7 +116,7 @@ function App() {
       {/* 1. פאנל צדדי (Sidebar) */}
       <div className="sidebar-container">
         <div style={{ padding: '20px', borderBottom: '1px solid #333', background: '#1a1a1a' }}>
-          <h2 style={{ color: '#ff4400', margin: 0, fontSize: '1.4rem', direction: 'ltr' }}>📡 Live Feed</h2>
+          <h2 style={{ color: '#e3eeea', margin: 0, fontSize: '1.4rem', direction: 'ltr' }}>📡 Live Feed</h2>
         </div>
 
         {/* שורת סינון מחוזות (District Filter) */}

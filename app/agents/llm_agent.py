@@ -63,27 +63,21 @@ class LLMAgent:
         data_str = json.dumps(predictions_data, ensure_ascii=False, indent=2)
 
         prompt = f"""
-        You are a seasoned Incident Commander in the Fire and Rescue Service. 
-        You are provided with real-time prediction data for active wildfires.
+        You are a tactical forecasting analyst for the Fire and Rescue Service.
+        Data (JSON): {data_str}
 
-        Data (JSON):
-        {data_str}
+        Task: Translate the JSON into a strict, highly concise 2-line briefing.
 
-        Task:
-        Provide a highly concise, tactical Situation Report (SitRep).
+        RULES:
+        1. ROUND Lat/Lon to 3 decimal places.
+        2. MAX 2 sentences for the forecast. NO fluff, NO filler words.
+        3. Follow the exact style of the Example Output.
 
-        STRICT FORMATTING RULES:
-        1. DO NOT write any introductory or concluding sentences (e.g., NO "Here is the SitRep...").
-        2. DO NOT use nested bullet points.
-        3. DO NOT leave empty lines (double line breaks) between bullets.
-        4. Use EXACTLY this format for the output:
+        EXAMPLE OUTPUT FORMAT:
+        📍 **Location & Risk:** Lat 31.844, Lon 34.678 | Risk: MODERATE
+        🔥 **Forecast:** Fire spreading at 130° (South-East) at 195 m/h, fueled by built area structures. Flame lengths of 0.98m are driven by northwest winds at 7.8 km/h.
 
-        **SitRep | Risk: [MODERATE/HIGH/EXTREME]**
-        * **Behavior:** Spreading [Compass Direction] at [ROS] m/h.
-        * **Tactical:** Flame length [Length]m. [Brief 3-5 word tactical meaning, e.g., "Direct attack dangerous"].
-        * **Drivers:** Fueled by [Fuel Type] with wind effects.
-
-        Keep it strictly to the facts provided. Do not invent metrics.
+        YOUR OUTPUT (Analyze the JSON and use the exact format above):
         """
 
         # שימוש במנגנון ה-Fallback החדש
@@ -105,20 +99,29 @@ class LLMAgent:
         data_str = json.dumps(dispatch_data, ensure_ascii=False, indent=2)
 
         prompt = f"""
-        You are the Chief Dispatcher for the Fire and Rescue Service.
-        Write a tactical dispatch summary for the '{district_name}' district based ONLY on this JSON:
-        {data_str}
+        You are the Chief AI Dispatcher. 
+        Data (JSON): {data_str}
 
-        STRICT FORMATTING RULES:
-        1. DO NOT write any introductory or concluding sentences (e.g., strictly NO "The following fires...", NO "Please note...").
-        2. Start directly with the header on the first line: **🚒 Dispatch Summary: {district_name} District**
-        3. For each fire, use exactly ONE bullet point formatted EXACTLY like this:
-           * **Event [ID]** ([Lat], [Lon]): [Number]x [Type] units (ETA: [Time] min).
-        4. If an ESHED is dispatched, append it to the same line: " + ESHED assigned". 
-        5. If no ESHED is dispatched, DO NOT mention it at all.
-        6. DO NOT add double line breaks (empty lines) between bullet points.
+        Task: Provide a structured recommendation for the '{district_name}' district.
 
-        Output ONLY the requested markdown text and nothing else.
+        RULES:
+        1. ROUND Lat/Lon to 3 decimal places.
+        2. The Strategy section MUST be EXACTLY ONE sentence. NO generic advice, NO fluff.
+        3. STRICTLY PROHIBITED: Do not write raw JSON keys like "eta_minutes", "lat", "lon", or "status" in the Strategy paragraph. Speak naturally.
+        4. Ignore the "status" field for the narrative (e.g., do not say "resolved fires").
+        5. You MUST include a double line break (blank line) immediately after the District header.
+        6. Follow the exact style of the Example Output.
+
+        EXAMPLE OUTPUT FORMAT:
+        👨‍✈️ **Dispatch Strategy: {district_name} District**
+
+        Main effort is focused on fire_4 with heavy SAAR units, while fire_3 receives a single ROTEM for rapid response.
+
+        **Recommended Deployment:**
+        * **fire_4** (Lat 31.844, Lon 34.678): Allocate 1x SAAR (ETA: 13.5 min) and 1x ROTEM (ETA: 13.5 min).
+        * **fire_3** (Lat 31.343, Lon 34.443): Allocate 1x ROTEM (ETA: 10.5 min).
+
+        YOUR OUTPUT (Analyze the JSON and use the exact format above):
         """
         
         # שימוש במנגנון ה-Fallback החדש
