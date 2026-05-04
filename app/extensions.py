@@ -17,8 +17,8 @@ if redis_url:
         async_mode='gevent',
         message_queue=redis_url
     )
-    print("🌐 SocketIO initialized with Redis Message Queue")
+    print(f"🌐 [PID {os.getpid()}] SocketIO initialized with Redis Message Queue")
 else:
     # לוקאלית (בלי Redis) הכל ימשיך לעבוד כרגיל בתהליך אחד
     socketio = SocketIO(cors_allowed_origins="*", async_mode='gevent')
-    print("🏠 SocketIO initialized in local mode (no Redis)")
+    print(f"🏠 [PID {os.getpid()}] SocketIO initialized in local mode (no Redis)")
