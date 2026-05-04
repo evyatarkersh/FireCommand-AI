@@ -40,7 +40,11 @@ def create_app():
             seed_real_israel_stations()
 
     # הגדרת הריצה האוטומטית
-    scheduler = GeventScheduler()
+    job_defaults = {
+        'coalesce': True,
+        'max_instances': 1
+    }
+    scheduler = GeventScheduler(job_defaults=job_defaults)
 
     def job():
         with app.app_context():
@@ -50,7 +54,7 @@ def create_app():
             run_full_system_sync()
 
     # מוסיף משימה שרצה כל 5 דקות
-    scheduler.add_job(func=job, trigger="interval", minutes=5, next_run_time=datetime.now() + timedelta(seconds=60))
+    scheduler.add_job(func=job, trigger="interval", minutes=5, next_run_time=datetime.now() + timedelta(seconds=60), misfire_grace_time=30)
     scheduler.start()
 
     return app
