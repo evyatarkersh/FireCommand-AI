@@ -219,7 +219,7 @@ def run_full_system_sync():
         }
 
         # 2. Monitor Cycle
-        print(f"🛑 [PID {current_pid}] Running Monitor Cycle...")
+        print(f"🛑 [PID {current_pid}] Running Monitor Cycle..")
         monitor_agent = MonitorAgent()
         monitor_agent.run_cycle()
         results['monitor_cycle'] = {"status": "success"}
