@@ -43,17 +43,30 @@ def create_app():
 
     # הגדרת הריצה האוטומטית
 
+        # --- לוגיקת סנכרון המערכת ---
+        def sync_job():
+            with app.app_context():
+                from app.api.routes import run_full_system_sync
+                # ההדפסה הזו תופיע עכשיו רק פעם אחת בכל סבב
+                print(f"⏰ {datetime.now().strftime('%H:%M:%S')} - Starting sync cycle...")
+                run_full_system_sync()
 
-    def job():
-        with app.app_context():
-            # קורא לפונקציה שהוצאנו בצעד הקודם
-            from app.api.routes import run_full_system_sync
-            print(f"⏰ {datetime.now().strftime('%H:%M:%S')} - Starting scheduled sync cycle...")
-            run_full_system_sync()
+        # 2. הפתרון לכפילות: הוספת המשימה עם ID קבוע ובדיקת קיום
+        if not scheduler.get_job('main_sync_job'):
+            scheduler.add_job(
+                id='main_sync_job',  # תעודת הזהות של המשימה
+                func=sync_job,
+                trigger="interval",
+                minutes=5,
+                # ירוץ דקה אחרי הסטארט-אפ כדי שהפורט ייפתח בנחת
+                next_run_time=datetime.now() + timedelta(seconds=60),
+                misfire_grace_time=30,
+                replace_existing=True
+            )
 
-    # מוסיף משימה שרצה כל 5 דקות
-    scheduler.add_job(id='main_sync_job', func=job, trigger="interval", minutes=5, next_run_time=datetime.now() + timedelta(seconds=60), misfire_grace_time=30)
-    if not scheduler.running:
-        scheduler.start()
+        # 3. התנעת המנוע רק אם הוא לא פועל כבר
+        if not scheduler.running:
+            scheduler.start()
+            print(f"🚀 [PID {os.getpid()}] Background Engine started.")
 
     return app
