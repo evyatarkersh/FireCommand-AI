@@ -34,32 +34,28 @@ def init_actual_scheduler():
         )
         scheduler.start()
 
+
 def start_scheduler_with_lock():
-    # השהיה של 10 שניות - קריטי כדי לוודא ש-Gunicorn סיים להקים את ה-Worker
+    # השהיה כדי לוודא ש-Gunicorn סיים לעלות
     gevent.sleep(10)
 
-    # ב-Render, אנחנו רוצים שה-Scheduler ירוץ רק בתוך ה-Worker.
-    # ה-Master לא מגדיר את המשתנה הזה, רק ה-Worker.
-    is_gunicorn_worker = os.environ.get('GUNICORN_WORKER_ID') is not None
-    is_render = os.environ.get('RENDER') is not None
-
-    if is_render and not is_gunicorn_worker:
-        print(f"ℹ️ [PID {os.getpid()}] Master process ignored. Waiting for Worker to start scheduler.")
-        return
-
     try:
-        # ניסיון תפיסת פורט 5001
+        # ה-Socket הוא הדרך הכי טובה. לא משנה מי מנסה (Master או Worker),
+        # רק אחד יצליח. הראשון שתופס - הוא זה שמריץ.
         _lock_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         _lock_socket.bind(('127.0.0.1', 5001))
 
+        # אם הצלחנו לבצע bind, אנחנו ה-Instance היחיד שרשאי להריץ
         init_actual_scheduler()
-        print(f"🚀 [PID {os.getpid()}] Port Lock Acquired. Scheduler running inside the ACTIVE Worker.")
+        print(f"🚀 [PID {os.getpid()}] Port Lock Acquired. Scheduler starting...")
 
+        # שמירה על הפורט תפוס
         while True:
             gevent.sleep(3600)
 
     except socket.error:
-        print(f"ℹ️ [PID {os.getpid()}] Port 5001 busy. Scheduler already handled.")
+        # אם הפורט תפוס, התהליך הזה פשוט שותק
+        print(f"ℹ️ [PID {os.getpid()}] Port 5001 busy. Scheduler already handled by another process.")
 
 # הפעלה ברמה הגלובלית - כשה-Worker ייטען, הוא יריץ את זה
 gevent.spawn(start_scheduler_with_lock)
