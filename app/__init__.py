@@ -3,9 +3,6 @@ from flask import Flask
 from app.extensions import db, socketio
 from app.api.routes import api
 from flask_cors import CORS
-from apscheduler.schedulers.gevent import GeventScheduler
-from datetime import datetime
-from datetime import timedelta
 
 def create_app():
     app = Flask(__name__)

@@ -28,30 +28,39 @@ def scheduled_task():
         run_full_system_sync()
 
 def start_scheduler():
-    # אם אנחנו ב-Windows (לוקאלי), פשוט תתניע
-    if fcntl is None:
-        if not scheduler.get_job('main_sync_job'):
-            scheduler.add_job(id='main_sync_job', func=scheduled_task, trigger="interval", minutes=5,
-                             next_run_time=datetime.now() + timedelta(seconds=60), misfire_grace_time=30)
-            scheduler.start()
-            print(f"🚀 [LOCAL] Scheduler started successfully.")
+    # מחכים 5 שניות כדי לוודא ש-Gunicorn סיים את ה-Fork-ים שלו
+    # ושה-Master לא יפעיל את זה בעצמו
+    gevent.sleep(5)
+
+    if fcntl is None:  # Windows/Local
+        init_actual_scheduler()
         return
 
-    # אם אנחנו ב-Render (Linux), חייבים נעילה כדי למנוע כפילות בגלל Gunicorn Fork
+    # ב-Render/Linux
     f = open(".scheduler.lock", "wb")
     try:
+        # הנעילה תתבצע רק ב-Worker שיצליח לתפוס אותה ראשון אחרי ה-Delay
         fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        if not scheduler.get_job('main_sync_job'):
-            scheduler.add_job(id='main_sync_job', func=scheduled_task, trigger="interval", minutes=5,
-                             next_run_time=datetime.now() + timedelta(seconds=60), misfire_grace_time=30)
-            scheduler.start()
-            print(f"🚀 [RENDER PID {os.getpid()}] Scheduler Lock Acquired.")
+        init_actual_scheduler()
+        print(f"🚀 [FINAL PID {os.getpid()}] Scheduler Lock Acquired.")
     except (IOError, OSError):
-        # אם התהליך כבר נעול, אנחנו פשוט לא מפעילים scheduler נוסף
         pass
 
-# הפעלת הפונקציה החכמה
-start_scheduler()
+
+def init_actual_scheduler():
+    if not scheduler.get_job('main_sync_job'):
+        scheduler.add_job(
+            id='main_sync_job',
+            func=scheduled_task,
+            trigger="interval",
+            minutes=5,
+            next_run_time=datetime.now() + timedelta(seconds=60)
+        )
+        scheduler.start()
+
+
+# הפעלה בתוך Greenlet כדי לא לחסום את עליית השרת
+gevent.spawn(start_scheduler)
 
 if __name__ == '__main__':
     socketio.run(app, debug=False, port=5000)
