@@ -65,3 +65,5 @@ Flask-Cors
 gevent
 gevent-websocket
 apscheduler
+redis
+flask-socketio[redis]
