@@ -3,7 +3,8 @@ from datetime import datetime
 from app.extensions import db
 from app.models.fire_events import FireEvent
 from app.agents.llm_agent import LLMAgent
-from app.extensions import socketio
+import os
+from flask_socketio import SocketIO
 
 
 class FirePredictorAgent:
@@ -35,21 +36,28 @@ class FirePredictorAgent:
                 events_updated += 1
 
         # שמירה מרוכזת לכל האירועים שעודכנו
+
         if events_updated > 0:
             try:
                 print("   💾 Predictor: שומר את כל הפוליגונים המעודכנים ל-DB...")
                 db.session.commit()
                 print("   ✅ תחזיות נשמרו בהצלחה!")
+
+                # ... בתוך הפונקציה / לפני הלולאה של השידור:
+                redis_url = os.environ.get('REDIS_URL')
+
+                # יוצרים את המשגר. אם אנחנו בלוקאל (אין redis_url), הוא פשוט יישאר ריק ויעבוד כברירת מחדל
+                emitter = SocketIO(message_queue=redis_url) if redis_url else SocketIO()
                 
                 for event in events_to_predict: # תחליף במשתנה שלך שמחזיק את האירועים
-                    socketio.emit('prediction_update', {
+                    emitter.emit('prediction_update', {
                         'event_id': event.id,
                         'prediction_polygon': event.prediction_polygon, # וודא שזה השם של שדה ה-GeoJSON שלך
                         'prediction_summary': event.prediction_summary
                     })
                     print("emitted prediction update for event", event.id)
         # נשימה קטנה לשרת כמו שעשינו קודם
-                    socketio.sleep(0.05)   
+                    emitter.sleep(1)
                 
             except Exception as e:
                 db.session.rollback()

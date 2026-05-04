@@ -7,7 +7,8 @@ from shapely.geometry import shape
 from pyproj import Geod
 from app.extensions import db
 from app.models.fire_events import FireEvent
-from app.extensions import socketio
+import os
+from flask_socketio import SocketIO
 
 class CommanderAgent:
     """
@@ -468,8 +469,13 @@ class CommanderAgent:
                 db.session.add(new_log)
                 
                 # --- התוספת שלנו לשידור חי לריאקט ---
+                # ... בתוך הפונקציה / לפני הלולאה של השידור:
+                redis_url = os.environ.get('REDIS_URL')
+
+                # יוצרים את המשגר. אם אנחנו בלוקאל (אין redis_url), הוא פשוט יישאר ריק ויעבוד כברירת מחדל
+                emitter = SocketIO(message_queue=redis_url) if redis_url else SocketIO()
                 print(f"📡 משדר סיכום מפקד למחוז {district} דרך WebSockets...")
-                socketio.emit('commander_update', {
+                emitter.emit('commander_update', {
                     'district': district,
                     'summary': human_readable_text
                 })
