@@ -41,32 +41,4 @@ def create_app():
             from app.services.seed_resources import seed_real_israel_stations
             seed_real_israel_stations()
 
-    # הגדרת הריצה האוטומטית
-
-        # --- לוגיקת סנכרון המערכת ---
-        def sync_job():
-            with app.app_context():
-                from app.api.routes import run_full_system_sync
-                # ההדפסה הזו תופיע עכשיו רק פעם אחת בכל סבב
-                print(f"⏰ {datetime.now().strftime('%H:%M:%S')} - Starting sync cycle...")
-                run_full_system_sync()
-
-        # 2. הפתרון לכפילות: הוספת המשימה עם ID קבוע ובדיקת קיום
-        if not scheduler.get_job('main_sync_job'):
-            scheduler.add_job(
-                id='main_sync_job',  # תעודת הזהות של המשימה
-                func=sync_job,
-                trigger="interval",
-                minutes=5,
-                # ירוץ דקה אחרי הסטארט-אפ כדי שהפורט ייפתח בנחת
-                next_run_time=datetime.now() + timedelta(seconds=60),
-                misfire_grace_time=30,
-                replace_existing=True
-            )
-
-        # 3. התנעת המנוע רק אם הוא לא פועל כבר
-        if not scheduler.running:
-            scheduler.start()
-            print(f"🚀 [PID {os.getpid()}] Background Engine started.")
-
     return app
