@@ -7,8 +7,6 @@ from apscheduler.schedulers.gevent import GeventScheduler
 from datetime import datetime
 from datetime import timedelta
 
-scheduler = GeventScheduler(job_defaults={'coalesce': True, 'max_instances': 1})
-
 def create_app():
     app = Flask(__name__)
 
