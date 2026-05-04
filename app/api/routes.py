@@ -1,5 +1,5 @@
 import datetime
-
+import os
 from flask import Blueprint, jsonify
 from app.extensions import db
 from app.models.test_model import TestLog
@@ -204,8 +204,9 @@ def get_active_fires():
 
 def run_full_system_sync():
     """הלוגיקה שאתה כבר כתבת, בתוך פונקציה שאפשר לקרוא לה מכל מקום"""
+    current_pid = os.getpid()
     start_time = datetime.datetime.now()
-    print(f"🔄 [SYNC START] {start_time.strftime('%H:%M:%S')} - Initializing full system update...")
+    print(f"🔄 [PID {current_pid}] [SYNC START] {start_time.strftime('%H:%M:%S')} - Initializing full system update...")
     start_time = time.time()
     results = {}
     try:
@@ -218,12 +219,22 @@ def run_full_system_sync():
         }
 
         # 2. Monitor Cycle
+        print(f"🛑 [PID {current_pid}] Running Monitor Cycle..")
         monitor_agent = MonitorAgent()
         monitor_agent.run_cycle()
         results['monitor_cycle'] = {"status": "success"}
 
-        print(f"✅ Sync completed in {time.time() - start_time:.2f}s")
+        print(f"✅ [PID {current_pid}] Sync completed in {time.time() - start_time:.2f}s")
         return results
     except Exception as e:
-        print(f"❌ Sync failed: {e}")
+        print(f"❌ [PID {current_pid}] Sync failed: {e}")
         return {"error": str(e)}
+
+@socketio.on('connect')
+def handle_connect():
+    print(f"🟢 [PID {os.getpid()}] React Client just connected to me!")
+
+# פונקציה שתקפוץ כשהלקוח סוגר את הדפדפן או מתנתק
+@socketio.on('disconnect')
+def handle_disconnect():
+    print(f"🟡 [PID {os.getpid()}] React Client disconnected.")
