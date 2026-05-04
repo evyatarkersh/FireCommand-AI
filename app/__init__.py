@@ -7,6 +7,8 @@ from apscheduler.schedulers.gevent import GeventScheduler
 from datetime import datetime
 from datetime import timedelta
 
+scheduler = GeventScheduler(job_defaults={'coalesce': True, 'max_instances': 1})
+
 def create_app():
     app = Flask(__name__)
 
@@ -40,11 +42,7 @@ def create_app():
             seed_real_israel_stations()
 
     # הגדרת הריצה האוטומטית
-    job_defaults = {
-        'coalesce': True,
-        'max_instances': 1
-    }
-    scheduler = GeventScheduler(job_defaults=job_defaults)
+
 
     def job():
         with app.app_context():
@@ -54,7 +52,8 @@ def create_app():
             run_full_system_sync()
 
     # מוסיף משימה שרצה כל 5 דקות
-    scheduler.add_job(func=job, trigger="interval", minutes=5, next_run_time=datetime.now() + timedelta(seconds=60), misfire_grace_time=30)
-    scheduler.start()
+    scheduler.add_job(id='main_sync_job', func=job, trigger="interval", minutes=5, next_run_time=datetime.now() + timedelta(seconds=60), misfire_grace_time=30)
+    if not scheduler.running:
+        scheduler.start()
 
     return app

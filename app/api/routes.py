@@ -1,3 +1,5 @@
+import datetime
+
 from flask import Blueprint, jsonify
 from app.extensions import db
 from app.models.test_model import TestLog
@@ -202,6 +204,8 @@ def get_active_fires():
 
 def run_full_system_sync():
     """הלוגיקה שאתה כבר כתבת, בתוך פונקציה שאפשר לקרוא לה מכל מקום"""
+    start_time = datetime.datetime.now()
+    print(f"🔄 [SYNC START] {start_time.strftime('%H:%M:%S')} - Initializing full system update...")
     start_time = time.time()
     results = {}
     try:
