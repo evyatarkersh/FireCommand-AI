@@ -21,6 +21,7 @@ function App() {
   const [districtSummaries, setDistrictSummaries] = useState({});
   const [focusedFireId, setFocusedFireId] = useState(null);
   const [selectedDistrict, setSelectedDistrict] = useState("All");
+  const [stations, setStations] = useState(null); // הסטייט החדש לתחנות
 
   const uniqueDistricts = ["All", ...new Set(fires.map(f => f.district).filter(Boolean))];
 
@@ -34,6 +35,16 @@ function App() {
         }
       })
       .catch(err => console.error("Error loading initial data:", err));
+
+
+      // 2. משיכת התחנות מהראוט החדש שיצרנו בשרת
+    fetch(`${BACKEND_URL}/stations`)
+      .then(res => res.json())
+      .then(data => {
+        setStations(data);
+        console.log("📍 Stations loaded:", data.features.length);
+      })
+      .catch(err => console.error("Error loading stations:", err));
 
     const socket = io(BACKEND_URL);
 
@@ -245,6 +256,40 @@ function App() {
           mapStyle="mapbox://styles/mapbox/dark-v11"
           mapboxAccessToken={MAPBOX_TOKEN}
         >
+{/* ---> כאן מדביקים את שכבת התחנות <--- */}
+          {stations && (
+            <Source id="stations-data" type="geojson" data={stations}>
+              <Layer
+                id="station-icons"
+                type="circle"
+                paint={{
+                  'circle-radius': 4,
+                  'circle-color': '#007cbf',
+                  'circle-stroke-width': 1,
+                  'circle-stroke-color': '#fff'
+                }}
+              />
+              <Layer
+                id="station-labels"
+                type="symbol"
+                minzoom={9}
+                layout={{
+                  'text-field': ['get', 'name'],
+                  'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
+                  'text-offset': [0, 1.2],
+                  'text-anchor': 'top',
+                  'text-size': 11,
+                  'text-allow-overlap': false
+                }}
+                paint={{
+                  'text-color': '#9eb3bf',
+                  'text-halo-color': '#000',
+                  'text-halo-width': 1
+                }}
+              />
+            </Source>
+          )}
+
           {fires.map((fire) => (
             <React.Fragment key={fire.event_id}>
               {fire.prediction_polygon && (

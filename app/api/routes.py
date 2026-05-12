@@ -238,3 +238,40 @@ def handle_connect():
 @socketio.on('disconnect')
 def handle_disconnect():
     print(f"🟡 [PID {os.getpid()}] React Client disconnected.")
+    
+
+from flask import jsonify
+from app.models.resources import Station
+# ודא שיש לך @bp.route או @app.route בהתאם לאיך שהגדרת את הראוטים שלך
+
+@bp.route('/stations', methods=['GET'])
+def get_stations():
+    """
+    שולף את כל תחנות הכיבוי מהדאטה-בייס
+    ומחזיר אותן בפורמט GeoJSON תקני עבור המפה בריאקט.
+    """
+    stations = Station.query.all()
+    
+    geojson = {
+        "type": "FeatureCollection",
+        "features": []
+    }
+    
+    for station in stations:
+        feature = {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                # חשוב מאוד: ב-GeoJSON הסדר הוא תמיד [קו אורך, קו רוחב]
+                "coordinates": [station.longitude, station.latitude]
+            },
+            "properties": {
+                "id": station.id,
+                "name": station.name,
+                "district": station.district,
+                "type": station.station_type
+            }
+        }
+        geojson["features"].append(feature)
+        
+    return jsonify(geojson)
