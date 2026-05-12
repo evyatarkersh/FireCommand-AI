@@ -17,14 +17,13 @@ function App() {
   });
 
   const [fires, setFires] = useState([]);
-  // הסטייט הזה שומר עכשיו רק את משפט האסטרטגיה הכללי של כל מחוז
   const [districtSummaries, setDistrictSummaries] = useState({});
   const [focusedFireId, setFocusedFireId] = useState(null);
   const [selectedDistrict, setSelectedDistrict] = useState("All");
-  const [stations, setStations] = useState(null); // הסטייט החדש לתחנות
+  const [stations, setStations] = useState(null);
+  const [iconLoaded, setIconLoaded] = useState(false);
 
   const uniqueDistricts = ["All", ...new Set(fires.map(f => f.district).filter(Boolean))];
-  const [iconLoaded, setIconLoaded] = useState(false); // סטייט חדש!
 
   useEffect(() => {
     fetch(`${BACKEND_URL}/active-fires`)
@@ -37,8 +36,6 @@ function App() {
       })
       .catch(err => console.error("Error loading initial data:", err));
 
-
-    // 2. משיכת התחנות מהראוט החדש שיצרנו בשרת
     fetch(`${BACKEND_URL}/stations`)
       .then(res => res.json())
       .then(data => {
@@ -75,11 +72,22 @@ function App() {
       ));
     });
 
-    // --- העדכון החדש שלנו: טיפול ב-JSON החכם ---
-    socket.on('commander_update', (data) => {
-      console.log(`👨‍✈️ התקבל עדכון מפקד חכם למחוז ${data.district_name}`, data);
+    // --- העדכון: טיפול ב-JSON החכם והמרתו ---
+    socket.on('commander_update', (payload) => {
+      console.log(`👨‍✈️ Raw commander update received:`, payload);
+      
+      let data = payload;
 
-      // 1. מעדכנים את סיכום המחוז הכללי בסטייט של המחוזות
+      // אם השרת שלח לנו את ה-JSON בתור מחרוזת טקסט, נמיר אותו לאובייקט
+      if (typeof payload === 'string') {
+        try {
+          data = JSON.parse(payload);
+        } catch (e) {
+          console.error("❌ Failed to parse LLM JSON:", e);
+          return; // עוצרים אם זה לא JSON תקין
+        }
+      }
+
       if (data.district_overview) {
         setDistrictSummaries(prev => ({
           ...prev,
@@ -87,21 +95,10 @@ function App() {
         }));
       }
 
-      // 2. מעדכנים את השיבוץ הפרטני לכל שריפה בתוך מערך השריפות
       if (data.fires_allocation && Array.isArray(data.fires_allocation)) {
         setFires(prevFires => prevFires.map(fire => {
-          // בודקים אם לשריפה הזו יש עדכון במחזור הנוכחי
           const allocationUpdate = data.fires_allocation.find(a => a.event_id === fire.event_id);
-
-          if (allocationUpdate) {
-            return {
-              ...fire,
-              tactical_summary: allocationUpdate.tactical_summary
-            };
-          }
-
-          // אם אין עדכון לשריפה הזו, אנחנו מחזירים אותה כמו שהיא (ההמלצה הישנה נשמרת!)
-          return fire;
+          return allocationUpdate ? { ...fire, tactical_summary: allocationUpdate.tactical_summary } : fire;
         }));
       }
     });
@@ -137,7 +134,6 @@ function App() {
     }
   };
 
-
   const onMapLoad = (evt) => {
     const map = evt.target;
 
@@ -149,7 +145,6 @@ function App() {
       if (!map.hasImage('station-icon')) {
         map.addImage('station-icon', image);
       }
-      // ---> הוספנו את השורה הזו:
       setIconLoaded(true);
     });
   };
@@ -157,13 +152,11 @@ function App() {
   return (
     <div style={{ display: 'flex', width: '100vw', height: '100vh', direction: 'ltr', backgroundColor: '#000' }}>
 
-      {/* פאנל צדדי (Sidebar) */}
       <div className="sidebar-container">
         <div style={{ padding: '20px', borderBottom: '1px solid #333', background: '#1a1a1a' }}>
           <h2 style={{ color: '#e3eeea', margin: 0, fontSize: '1.4rem', direction: 'ltr' }}>📡 Live Feed</h2>
         </div>
 
-        {/* שורת סינון מחוזות */}
         {uniqueDistricts.length > 1 && (
           <div style={{
             padding: '10px 20px',
@@ -196,15 +189,24 @@ function App() {
           </div>
         )}
 
-        {/* --- באנר אסטרטגיה מחוזי (מופיע רק כשבוחרים מחוז) --- */}
         {selectedDistrict !== "All" && districtSummaries[selectedDistrict] && (
-          <div style={{ padding: '15px', background: '#2a1a12', borderBottom: '2px solid #ff4400' }}>
-            <h3 style={{ margin: '0 0 8px 0', color: '#ffaa00', fontSize: '1.05rem' }}>
-              👨‍✈️ Strategy: {selectedDistrict}
-            </h3>
-            <p style={{ margin: 0, fontSize: '0.9rem', color: '#ddd', lineHeight: '1.4' }}>
-              {districtSummaries[selectedDistrict]}
-            </p>
+          <div style={{ 
+            padding: '16px', 
+            background: '#1a1d21', 
+            borderLeft: '4px solid #ff9900', 
+            marginBottom: '10px',
+            direction: 'ltr',
+            textAlign: 'left'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+              <span style={{ fontSize: '1.2rem' }}>🎖️</span>
+              <h3 style={{ margin: 0, color: '#ff9900', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                Command Strategy: {selectedDistrict}
+              </h3>
+            </div>
+            <div style={{ margin: 0, fontSize: '0.9rem', color: '#d1d5db', lineHeight: '1.6' }} className="markdown-container">
+              <ReactMarkdown>{districtSummaries[selectedDistrict]}</ReactMarkdown>
+            </div>
           </div>
         )}
 
@@ -235,23 +237,35 @@ function App() {
                   </span>
                 </div>
 
-                <div className="ai-summary" style={{ direction: 'ltr', textAlign: 'left', marginTop: '10px' }}>
+                <div className="ai-summary" style={{ 
+                  direction: 'ltr', 
+                  textAlign: 'left', 
+                  marginTop: '12px', 
+                  color: '#9ca3af', 
+                  fontSize: '0.9rem', 
+                  lineHeight: '1.6' 
+                }}>
                   <ReactMarkdown>
                     {fire.prediction_summary || "Computing Prediction..."}
                   </ReactMarkdown>
                 </div>
 
-                {/* --- המלצת שיבוץ טקטית לשריפה --- */}
+                {/* --- הושארה רק קופסת שיבוץ אחת! --- */}
                 {fire.tactical_summary && (
-                  <div className="commander-recommendation" style={{
-                    marginTop: '12px',
-                    padding: '10px',
-                    background: '#162424',
-                    borderRadius: '6px',
-                    borderLeft: '4px solid #00ffcc'
+                  <div className="commander-recommendation" style={{ 
+                    marginTop: '16px', 
+                    padding: '12px 16px', 
+                    background: 'rgba(0, 255, 204, 0.05)',
+                    borderLeft: '3px solid #00ffcc',
+                    borderRadius: '0 4px 4px 0',
+                    direction: 'ltr',
+                    textAlign: 'left'
                   }}>
-                    <div style={{ fontSize: '0.95rem', color: '#fff', lineHeight: '1.4', direction: 'ltr', textAlign: 'left' }}>
-                      {fire.tactical_summary}
+                    <div style={{ color: '#00ffcc', fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>
+                      Action Required
+                    </div>
+                    <div style={{ fontSize: '0.9rem', color: '#e5e7eb', lineHeight: '1.5' }} className="markdown-container">
+                      <ReactMarkdown>{fire.tactical_summary}</ReactMarkdown>
                     </div>
                   </div>
                 )}
@@ -266,7 +280,6 @@ function App() {
         </div>
       </div>
 
-      {/* אזור המפה */}
       <div style={{ flex: 1, position: 'relative' }}>
         <Map
           {...viewState}
@@ -277,16 +290,12 @@ function App() {
         >
           {stations && iconLoaded && (
             <Source id="stations-data" type="geojson" data={stations}>
-              {/* השכבה של האייקון */}
               <Layer
                 id="station-icons"
                 type="symbol"
                 layout={{
                   'icon-image': 'station-icon',
-
-                  // כאן הקסם: 1 זה הגודל המקורי. נסה 0.05 (שזה 5% מהגודל המקורי)
                   'icon-size': 0.038,
-
                   'icon-allow-overlap': true,
                   'icon-ignore-placement': true
                 }}
@@ -295,7 +304,6 @@ function App() {
                 }}
               />
 
-              {/* שכבת השמות (אופציונלי - נשארת כמו קודם) */}
               <Layer
                 id="station-labels"
                 type="symbol"

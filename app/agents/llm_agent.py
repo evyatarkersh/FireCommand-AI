@@ -86,7 +86,7 @@ class LLMAgent:
     def summarize_dispatch(self, district_name, dispatch_data):
         """
         מקבלת שם מחוז ואת ה-JSON של שיבוץ הכוחות (כולל שמות התחנות),
-        ומחזירה JSON מובנה עם סיכום מחוזי וסיכומים טקטיים לכל שריפה.
+        ומחזירה JSON מובנה עם סיכום מחוזי וסיכומים טקטיים לכל שריפה בפורמט Markdown.
         """
         if not self.is_active:
             return '{"error": "LLM Agent is inactive."}'
@@ -99,31 +99,34 @@ class LLMAgent:
         data_str = json.dumps(dispatch_data, ensure_ascii=False, indent=2)
 
         prompt = f"""
-        You are the Chief AI Dispatcher.
+        You are the Chief AI Dispatcher for a Fire Management Optimization System.
         Data (JSON): {data_str}
 
         Task: Analyze the dispatch data for the '{district_name}' district and return a STRICT JSON output.
 
-        RULES:
-        1. You MUST return ONLY valid JSON. No markdown formatting like ```json, no conversational text before or after the JSON.
-        2. ROUND Lat/Lon to 3 decimal places in your tactical summaries.
-        3. The `district_overview` MUST be exactly one sentence summarizing the overall strategy for the district.
-        4. For each fire in the data, create an entry in the `fires_allocation` array.
+        CRITICAL RULES:
+        1. You MUST return ONLY valid JSON. No markdown formatting around the output (like ```json), no conversational text.
+        2. DO NOT SKIP ANY FIRE EVENT. You must iterate through the provided data and create an entry in the `fires_allocation` array for EVERY SINGLE FIRE listed.
+        3. ROUND Lat/Lon to 3 decimal places in your tactical summaries.
+        4. Use Markdown formatting (\n\n for new paragraphs, **bold** for titles, * for bullet points) INSIDE the JSON string values.
         5. The `event_id` in the `fires_allocation` array MUST be an integer (extract the number from keys like "fire_8").
-        6. The `tactical_summary` should be a short, direct command listing the allocated units, their origin stations, and ETAs.
+        
+        FORMATTING RULES:
+        - `district_overview`: Provide a "Strategic Focus" (1-2 sentences explaining the logic of the district's resource allocation) followed by a "Unit Distribution" bulleted list mapping events to units.
+        - `tactical_summary`: Provide a "Tactical Assessment" (1 sentence explaining the risk/priority of this specific fire) followed by "Dispatch Orders" as a clean bulleted list.
 
         EXPECTED JSON SCHEMA:
         {{
           "district_name": "{district_name}",
-          "district_overview": "Main effort is focused on the southern sector with heavy SAAR units, while secondary fires receive ROTEM units for rapid response.",
+          "district_overview": "**Strategic Focus:**\\nMain effort is prioritized to contain the high-risk fire in the eastern sector, threatening built areas. Secondary fires are being managed with rapid-response units.\\n\\n**Unit Distribution:**\\n* **Event #22:** 1x ROTEM from Beit She'an\\n* **Event #12:** 2x SAAR from Tiberias",
           "fires_allocation": [
             {{
-              "event_id": 4,
-              "tactical_summary": "🚒 Allocate 1x SAAR from Haifa (Regional) (ETA: 13.5 min) and 1x ROTEM from Zvulun (Regional) (ETA: 13.5 min)."
+              "event_id": 22,
+              "tactical_summary": "**Tactical Assessment:**\\nFire is spreading rapidly towards agricultural infrastructure. Immediate containment is required on the eastern flank.\\n\\n**Dispatch Orders:**\\n* 🚒 **1x ROTEM** | From: Beit She'an | ETA: 22.7 min"
             }},
             {{
-              "event_id": 3,
-              "tactical_summary": "🚒 Allocate 1x ROTEM from Hadera (Regional) (ETA: 10.5 min)."
+              "event_id": 12,
+              "tactical_summary": "**Tactical Assessment:**\\nModerate risk fire requiring standard intervention to prevent escalation.\\n\\n**Dispatch Orders:**\\n* 🚒 **2x SAAR** | From: Tiberias | ETA: 15.2 min"
             }}
           ]
         }}
