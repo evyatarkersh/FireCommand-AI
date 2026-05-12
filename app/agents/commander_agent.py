@@ -470,6 +470,22 @@ class CommanderAgent:
                 # 2. ניסיון להמיר את המחרוזת לאובייקט פייתון (מילון)
                 try:
                     structured_data = json.loads(raw_summary_string)
+                    # --- התוספת החדשה: עדכון השריפות בדאטה-בייס ---
+                    # שולפים את מערך ההמלצות (או רשימה ריקה אם אין)
+                    fires_allocation = structured_data.get("fires_allocation", [])
+
+                    for allocation in fires_allocation:
+                        event_id = allocation.get("event_id")
+                        tactical_summary = allocation.get("tactical_summary")
+
+                        if event_id and tactical_summary:
+                            # מוצאים את השריפה הספציפית ומעדכנים לה את העמודה
+                            fire_event = FireEvent.query.get(event_id)
+                            if fire_event:
+                                fire_event.tactical_summary = tactical_summary
+
+                    # שומרים את כל העדכונים של השריפות בבת אחת
+                    db.session.commit()
                 except json.JSONDecodeError as e:
                     print(f"❌ Error: LLM did not return valid JSON for {district}. Exception: {e}")
                     # מנגנון הגנה: יצירת אובייקט "חירום" כדי לא לשבור את הריאקט
