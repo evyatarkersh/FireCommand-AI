@@ -68,6 +68,8 @@ class FireEvent(db.Model):
     
     # --- Commander Agent ---
     demand_perimeter_m = db.Column(db.Float) # דרישת קו ההגנה (במטרים) עבור הפוליגון החזוי הנוכחי
+
+    tactical_summary = db.Column(db.String, nullable=True)
     
     # הקשר לנתונים הגולמיים
     raw_reads = db.relationship('FireIncident', backref='event', lazy=True)
@@ -96,7 +98,7 @@ class FireEvent(db.Model):
             "lon": self.longitude,
             "intensity": self.frp,
             "district": district, # <--- זה השדה הקריטי שחסר לריאקט!
-            "last_update": self.last_update.isoformat(),
+            "created_at": self.created_at.isoformat(),
             "prediction_polygon": self.prediction_polygon,
             "prediction_summary": getattr(self, 'prediction_summary', "מחשב תחזית...")
         }
