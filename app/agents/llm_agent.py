@@ -85,44 +85,53 @@ class LLMAgent:
 
     def summarize_dispatch(self, district_name, dispatch_data):
         """
-        מקבלת שם מחוז ואת ה-JSON של שיבוץ הכוחות,
-        ומחזירה דיווח מבצעי אנושי המיועד למפקד הזירה.
+        מקבלת שם מחוז ואת ה-JSON של שיבוץ הכוחות (כולל שמות התחנות),
+        ומחזירה JSON מובנה עם סיכום מחוזי וסיכומים טקטיים לכל שריפה.
         """
         if not self.is_active:
-            return "⚠️ LLM Agent is inactive."
+            return '{"error": "LLM Agent is inactive."}'
 
         if not dispatch_data:
-            return "✅ No resources were dispatched in this cycle."
+            return '{"district_overview": "No resources were dispatched in this cycle.", "fires_allocation": []}'
 
-        print(f"🤖 LLM Agent: Generating operational dispatch summary for {district_name} district...")
+        print(f"🤖 LLM Agent: Generating structured dispatch summary for {district_name} district...")
 
         data_str = json.dumps(dispatch_data, ensure_ascii=False, indent=2)
 
         prompt = f"""
-        You are the Chief AI Dispatcher. 
+        You are the Chief AI Dispatcher.
         Data (JSON): {data_str}
 
-        Task: Provide a structured recommendation for the '{district_name}' district.
+        Task: Analyze the dispatch data for the '{district_name}' district and return a STRICT JSON output.
 
         RULES:
-        1. ROUND Lat/Lon to 3 decimal places.
-        2. The Strategy section MUST be EXACTLY ONE sentence. NO generic advice, NO fluff.
-        3. STRICTLY PROHIBITED: Do not write raw JSON keys like "eta_minutes", "lat", "lon", or "status" in the Strategy paragraph. Speak naturally.
-        4. Ignore the "status" field for the narrative (e.g., do not say "resolved fires").
-        5. You MUST include a double line break (blank line) immediately after the District header.
-        6. Follow the exact style of the Example Output.
+        1. You MUST return ONLY valid JSON. No markdown formatting like ```json, no conversational text before or after the JSON.
+        2. ROUND Lat/Lon to 3 decimal places in your tactical summaries.
+        3. The `district_overview` MUST be exactly one sentence summarizing the overall strategy for the district.
+        4. For each fire in the data, create an entry in the `fires_allocation` array.
+        5. The `event_id` in the `fires_allocation` array MUST be an integer (extract the number from keys like "fire_8").
+        6. The `tactical_summary` should be a short, direct command listing the allocated units, their origin stations, and ETAs.
 
-        EXAMPLE OUTPUT FORMAT:
-        👨‍✈️ **Dispatch Strategy: {district_name} District**
+        EXPECTED JSON SCHEMA:
+        {{
+          "district_name": "{district_name}",
+          "district_overview": "Main effort is focused on the southern sector with heavy SAAR units, while secondary fires receive ROTEM units for rapid response.",
+          "fires_allocation": [
+            {{
+              "event_id": 4,
+              "tactical_summary": "🚒 Allocate 1x SAAR from Haifa (Regional) (ETA: 13.5 min) and 1x ROTEM from Zvulun (Regional) (ETA: 13.5 min)."
+            }},
+            {{
+              "event_id": 3,
+              "tactical_summary": "🚒 Allocate 1x ROTEM from Hadera (Regional) (ETA: 10.5 min)."
+            }}
+          ]
+        }}
 
-        Main effort is focused on fire_4 with heavy SAAR units, while fire_3 receives a single ROTEM for rapid response.
-
-        **Recommended Deployment:**
-        * **fire_4** (Lat 31.844, Lon 34.678): Allocate 1x SAAR (ETA: 13.5 min) and 1x ROTEM (ETA: 13.5 min).
-        * **fire_3** (Lat 31.343, Lon 34.443): Allocate 1x ROTEM (ETA: 10.5 min).
-
-        YOUR OUTPUT (Analyze the JSON and use the exact format above):
+        YOUR JSON OUTPUT:
         """
         
-        # שימוש במנגנון ה-Fallback החדש
-        return self._call_llm_with_fallback(prompt, context_name=f"Dispatch {district_name}")
+        # שימוש במנגנון ה-Fallback מול Groq
+        response_text = self._call_llm_with_fallback(prompt, context_name=f"Dispatch {district_name}")
+        
+        return response_text

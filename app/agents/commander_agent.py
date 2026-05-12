@@ -439,53 +439,61 @@ class CommanderAgent:
 
     def _generate_and_save_district_summaries(self, llm_summary_json):
         """
-        מקבלת את ה-JSON המסכם, שולחת אותו לסוכן ה-LLM לניסוח אנושי,
-        ושומרת את התוצאות לטבלת "יומן מבצעים" בדאטה-בייס.
+        מקבלת את ה-JSON המסכם, שולחת אותו לסוכן ה-LLM לניסוח מובנה (JSON),
+        שומרת ל-DB, ומשדרת את האובייקט המסודר לריאקט.
         """
         if not llm_summary_json:
             return
 
         import json
+        import os
+        from flask_socketio import SocketIO
         from app.extensions import db
         from app.models.commander_logs import CommandLog
-        from app.agents.llm_agent import LLMAgent  # ודא שהנתיב נכון לפי מבנה הפרויקט שלכם
+        from app.agents.llm_agent import LLMAgent  
 
         llm = LLMAgent()
         print("\n🗣️ מעביר נתונים לסוכן הדוברות (LLM Agent) לניסוח סיכומים...")
 
+        # יעילות: מקימים את המשגר פעם אחת מחוץ ללולאה
+        redis_url = os.environ.get('REDIS_URL')
+        emitter = SocketIO(message_queue=redis_url) if redis_url else SocketIO()
+
         for district, fires_data in llm_summary_json.items():
             try:
-                # 1. יצירת הטקסט האנושי בעזרת סוכן ה-LLM
-                human_readable_text = llm.summarize_dispatch(district, fires_data)
+                # 1. קבלת התשובה מה-LLM (זו מחרוזת טקסט שאמורה להכיל JSON)
+                raw_summary_string = llm.summarize_dispatch(district, fires_data)
+                print(f"   ✅ התקבל פלט LLM גולמי למחוז {district}:\n      {raw_summary_string}\n")
 
-                print(f"   ✅ סוכם מחוז {district}:\n      {human_readable_text}\n")
+                # 2. ניסיון להמיר את המחרוזת לאובייקט פייתון (מילון)
+                try:
+                    structured_data = json.loads(raw_summary_string)
+                except json.JSONDecodeError as e:
+                    print(f"❌ Error: LLM did not return valid JSON for {district}. Exception: {e}")
+                    # מנגנון הגנה: יצירת אובייקט "חירום" כדי לא לשבור את הריאקט
+                    structured_data = {
+                        "district_name": district,
+                        "district_overview": "⚠️ Error formatting dispatch strategy.",
+                        "fires_allocation": []
+                    }
 
-                # 2. שמירה לדאטה-בייס לטבלת יומן המבצעים
+                # 3. שמירה לדאטה-בייס (שומרים את המחרוזת כפי שהיא ביומן המבצעים)
                 new_log = CommandLog(
                     district_name=district,
                     raw_json=fires_data,
-                    llm_summary_text=human_readable_text
+                    llm_summary_text=raw_summary_string 
                 )
                 db.session.add(new_log)
                 
-                # --- התוספת שלנו לשידור חי לריאקט ---
-                # ... בתוך הפונקציה / לפני הלולאה של השידור:
-                redis_url = os.environ.get('REDIS_URL')
-
-                # יוצרים את המשגר. אם אנחנו בלוקאל (אין redis_url), הוא פשוט יישאר ריק ויעבוד כברירת מחדל
-                emitter = SocketIO(message_queue=redis_url) if redis_url else SocketIO()
-                print(f"📡 משדר סיכום מפקד למחוז {district} דרך WebSockets...")
-                emitter.emit('commander_update', {
-                    'district': district,
-                    'summary': human_readable_text
-                })
+                # 4. שידור חי לריאקט - אנחנו משדרים את האובייקט המובנה!
+                print(f"📡 משדר סיכום מפקד מובנה למחוז {district} דרך WebSockets...")
+                emitter.emit('commander_update', structured_data)
                 print("emited commander_update event to WebSocket clients.")
-                # ------------------------------------
 
             except Exception as e:
                 print(f"   ⚠️ שגיאה ביצירת סיכום LLM למחוז {district}: {e}")
 
-        # 3. Commit סופי של יומן המבצעים
+        # 5. Commit סופי של יומן המבצעים
         try:
             db.session.commit()
             print("   💾 יומן המבצעים נשמר בהצלחה ב-DB.")
