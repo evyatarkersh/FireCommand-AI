@@ -110,7 +110,8 @@ class LLMAgent:
         3. STRICTLY PROHIBITED: Do not write raw JSON keys like "eta_minutes", "lat", "lon", or "status" in the Strategy paragraph. Speak naturally.
         4. Ignore the "status" field for the narrative (e.g., do not say "resolved fires").
         5. You MUST include a double line break (blank line) immediately after the District header.
-        6. Follow the exact style of the Example Output.
+        6. Mention the origin station for each dispatched resource in the Recommended Deployment section.
+        7. Follow the exact style of the Example Output.
 
         EXAMPLE OUTPUT FORMAT:
         👨‍✈️ **Dispatch Strategy: {district_name} District**
@@ -118,11 +119,11 @@ class LLMAgent:
         Main effort is focused on fire_4 with heavy SAAR units, while fire_3 receives a single ROTEM for rapid response.
 
         **Recommended Deployment:**
-        * **fire_4** (Lat 31.844, Lon 34.678): Allocate 1x SAAR (ETA: 13.5 min) and 1x ROTEM (ETA: 13.5 min).
-        * **fire_3** (Lat 31.343, Lon 34.443): Allocate 1x ROTEM (ETA: 10.5 min).
+        * **fire_4** (Lat 31.844, Lon 34.678): Allocate 1x SAAR from Haifa (Regional) (ETA: 13.5 min) and 1x ROTEM from Zvulun (Regional) (ETA: 13.5 min).
+        * **fire_3** (Lat 31.343, Lon 34.443): Allocate 1x ROTEM from Hadera (Regional) (ETA: 10.5 min).
 
         YOUR OUTPUT (Analyze the JSON and use the exact format above):
         """
-        
+
         # שימוש במנגנון ה-Fallback החדש
         return self._call_llm_with_fallback(prompt, context_name=f"Dispatch {district_name}")

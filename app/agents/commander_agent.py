@@ -182,10 +182,10 @@ class CommanderAgent:
             closest_eshed.assigned_event_id = fire.id
             allocated_set.add(closest_eshed.id)
             print(f"💧 [Enabler] שובץ רכב ESHED (אשד) ממרחק {min_dist:.1f} ק\"מ לתמיכה בשריפה {fire.id}.")
-            return True
+            return closest_eshed
         else:
             print(f"⚠️ אזהרה קריטית: לא נותרו רכבי ESHED פנויים בארץ לתמיכה בשריפה {fire.id}!")
-            return False
+            return None
 
     def _assign_district_to_fire(self, fire, all_stations):
         """
@@ -380,19 +380,21 @@ class CommanderAgent:
 
                         llm_summary[district_name][fire_key]["resources"].append({
                             "type": selected_res.resource_type,
-                            "eta_minutes": round(actual_eta_mins, 1)
+                            "eta_minutes": round(actual_eta_mins, 1),
+                            "station": selected_res.station.name if selected_res.station else "Unknown"
                         })
 
                         # נוהל Enabler
                         if selected_res.resource_type == "SAAR":
                             saar_counters[f] += 1
                             if saar_counters[f] % 3 == 0:
-                                is_allocated = self._allocate_enabler_eshed(target_fire,
+                                allocated_eshed = self._allocate_enabler_eshed(target_fire,
                                                                             available_supply.get("ESHED", []),
                                                                             allocated_in_this_cycle)
-                                if is_allocated:
+                                if allocated_eshed:
                                     llm_summary[district_name][fire_key]["resources"].append(
-                                        {"type": "ESHED (Water Supply)", "eta_minutes": "N/A"})
+                                        {"type": "ESHED (Water Supply)", "eta_minutes": "N/A",
+                                         "station": allocated_eshed.station.name if allocated_eshed.station else "Unknown"})
             return True
         else:
             return False
