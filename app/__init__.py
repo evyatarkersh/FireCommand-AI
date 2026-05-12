@@ -23,17 +23,4 @@ def create_app():
     # רישום ה-Routes
     app.register_blueprint(api)
 
-    # יצירת טבלאות אוטומטית (אם לא קיימות)
-    with app.app_context():
-        from app.models.nasa_fire import FireIncident  # וודא שזה שם הקובץ הנכון
-        from app.models.fire_events import FireEvent
-        from app.models.resources import Station, Resource
-        from app.models.commander_logs import CommandLog
-        db.create_all()
-
-        if Station.query.first() is None:
-            print("Empty station database detected. Starting initial data seeding")
-            from app.services.seed_resources import seed_real_israel_stations
-            seed_real_israel_stations()
-
     return app
