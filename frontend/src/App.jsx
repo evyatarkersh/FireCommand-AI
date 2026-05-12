@@ -24,6 +24,7 @@ function App() {
   const [stations, setStations] = useState(null); // הסטייט החדש לתחנות
 
   const uniqueDistricts = ["All", ...new Set(fires.map(f => f.district).filter(Boolean))];
+  const [iconLoaded, setIconLoaded] = useState(false); // סטייט חדש!
 
   useEffect(() => {
     fetch(`${BACKEND_URL}/active-fires`)
@@ -134,6 +135,23 @@ function App() {
     if (cardElement) {
       cardElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
+  };
+
+
+  const onMapLoad = (evt) => {
+    const map = evt.target;
+
+    map.loadImage('/fire-station.png', (error, image) => {
+      if (error) {
+        console.error("❌ שגיאה בטעינת קובץ ה-PNG. ודא שהוא בתיקיית public ושמו מדויק:", error);
+        return;
+      }
+      if (!map.hasImage('station-icon')) {
+        map.addImage('station-icon', image);
+      }
+      // ---> הוספנו את השורה הזו:
+      setIconLoaded(true);
+    });
   };
 
   return (
@@ -253,54 +271,49 @@ function App() {
         <Map
           {...viewState}
           onMove={evt => setViewState(evt.viewState)}
+          onLoad={onMapLoad}
           mapStyle="mapbox://styles/mapbox/dark-v11"
           mapboxAccessToken={MAPBOX_TOKEN}
         >
-          {/* שכבת תחנות הכיבוי - מרקרים נקיים ללא רקע ועיגול */}
-          {stations && stations.features.map((station) => (
-            <Marker
-              key={`station-${station.properties.id}`}
-              longitude={station.geometry.coordinates[0]}
-              latitude={station.geometry.coordinates[1]}
-              anchor="center"
-            >
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                // שקיפות וגודל דינמיים לפי רמת הזום
-                opacity: viewState.zoom > 8 ? 1 : 0.6,
-                transform: `scale(${viewState.zoom > 8 ? 1 : 0.75})`,
-                transition: 'all 0.3s ease',
-                cursor: 'pointer'
-              }}
-              title={station.properties.name} // השם המלא יוצג במעבר עכבר
-              >
-                {/* האמוג'י נטו, ללא מסגרת או רקע */}
-                <div style={{
-                  fontSize: '22px', // הגדלנו מעט כי אין רקע
-                  lineHeight: '1',
-                  textShadow: '0px 0px 6px rgba(0, 0, 0, 0.9)' // צל כהה כדי שיבלוט על המפה
-                }}>
-                  🏢
-                </div>
-                
-                {/* שם התחנה - מופיע רק בזום של 9 ומעלה */}
-                {viewState.zoom > 9 && (
-                  <div style={{
-                    color: '#9eb3bf',
-                    fontSize: '11px',
-                    fontWeight: 'bold',
-                    marginTop: '2px',
-                    textShadow: '1px 1px 2px #000, -1px -1px 2px #000',
-                    whiteSpace: 'nowrap'
-                  }}>
-                    {station.properties.name}
-                  </div>
-                )}
-              </div>
-            </Marker>
-          ))}
+          {stations && iconLoaded && (
+            <Source id="stations-data" type="geojson" data={stations}>
+              {/* השכבה של האייקון */}
+              <Layer
+                id="station-icons"
+                type="symbol"
+                layout={{
+                  'icon-image': 'station-icon',
+
+                  // כאן הקסם: 1 זה הגודל המקורי. נסה 0.05 (שזה 5% מהגודל המקורי)
+                  'icon-size': 0.038,
+
+                  'icon-allow-overlap': true,
+                  'icon-ignore-placement': true
+                }}
+                paint={{
+                  'icon-opacity': 0.9
+                }}
+              />
+
+              {/* שכבת השמות (אופציונלי - נשארת כמו קודם) */}
+              <Layer
+                id="station-labels"
+                type="symbol"
+                minzoom={10}
+                layout={{
+                  'text-field': ['get', 'name'],
+                  'text-size': 11,
+                  'text-offset': [0, 1.5],
+                  'text-anchor': 'top'
+                }}
+                paint={{
+                  'text-color': '#9eb3bf',
+                  'text-halo-color': '#000',
+                  'text-halo-width': 1
+                }}
+              />
+            </Source>
+          )}
 
           {fires.map((fire) => (
             <React.Fragment key={fire.event_id}>
