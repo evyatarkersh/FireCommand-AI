@@ -2,7 +2,6 @@ import datetime
 import os
 from flask import Blueprint, jsonify
 from app.extensions import db
-from app.models.test_model import TestLog
 from sqlalchemy import text
 from app.agents.nasa_agent import NasaIngestionService
 from app.agents.open_weather_map_agent import WeatherService
@@ -35,28 +34,6 @@ def test_db():
         return f"Read Success! Version: {version}"
     except Exception as e:
         return f"Connection Failed: {e}"
-
-
-# בדיקת כתיבה (במקום INSERT ידני, יוצרים אובייקט)
-@api.route('/init-db')
-def init_db():
-    try:
-        # 1. הוספת שורה חדשה
-        new_log = TestLog(message='Hello from Flask Modular Structure!')
-        db.session.add(new_log)
-        db.session.commit()
-
-        # 2. שליפת כל השורות
-        all_logs = TestLog.query.all()
-
-        # המרה ל-JSON
-        return jsonify({
-            "status": "success",
-            "message": "Row inserted via ORM!",
-            "current_data": [log.to_dict() for log in all_logs]
-        })
-    except Exception as e:
-        return jsonify({"status": "error", "error": str(e)})
 
 @api.route('/test-nasa')
 def test_nasa():
