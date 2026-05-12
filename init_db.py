@@ -1,5 +1,9 @@
 from app import create_app
 from app.extensions import db
+from app.models.nasa_fire import FireIncident
+from app.models.fire_events import FireEvent
+from app.models.resources import Station, Resource
+from app.models.commander_logs import CommandLog
 from app.services.seed_resources import seed_real_israel_stations
 
 app = create_app()
