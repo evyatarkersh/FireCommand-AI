@@ -256,8 +256,7 @@ function App() {
           mapStyle="mapbox://styles/mapbox/dark-v11"
           mapboxAccessToken={MAPBOX_TOKEN}
         >
-          {/* ---> כאן מדביקים את שכבת התחנות <--- */}
-          {/* שכבת תחנות הכיבוי - הפעם כמרקרים של ריאקט (עוקף את מגבלת האמוג'י) */}
+          {/* שכבת תחנות הכיבוי - מרקרים נקיים ללא רקע ועיגול */}
           {stations && stations.features.map((station) => (
             <Marker
               key={`station-${station.properties.id}`}
@@ -269,28 +268,21 @@ function App() {
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                // שקיפות וגודל דינמיים לפי רמת הזום!
-                opacity: viewState.zoom > 8 ? 1 : 0.5,
-                transform: `scale(${viewState.zoom > 8 ? 1 : 0.7})`,
-                transition: 'all 0.3s ease'
-              }}>
-                {/* עיגול הרקע של התחנה */}
-                <div 
-                  style={{
-                    background: '#1a2b3c', // כחול-כהה מבצעי
-                    border: '1.5px solid #007cbf',
-                    borderRadius: '50%',
-                    width: '26px',
-                    height: '26px',
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    boxShadow: '0 0 10px rgba(0, 124, 191, 0.4)',
-                    cursor: 'pointer'
-                  }} 
-                  title={station.properties.name} // השם יקפוץ כשעוברים עם העכבר
-                >
-                  <span style={{ fontSize: '14px', lineHeight: '1' }}>🚒</span>
+                // שקיפות וגודל דינמיים לפי רמת הזום
+                opacity: viewState.zoom > 8 ? 1 : 0.6,
+                transform: `scale(${viewState.zoom > 8 ? 1 : 0.75})`,
+                transition: 'all 0.3s ease',
+                cursor: 'pointer'
+              }}
+              title={station.properties.name} // השם המלא יוצג במעבר עכבר
+              >
+                {/* האמוג'י נטו, ללא מסגרת או רקע */}
+                <div style={{
+                  fontSize: '22px', // הגדלנו מעט כי אין רקע
+                  lineHeight: '1',
+                  textShadow: '0px 0px 6px rgba(0, 0, 0, 0.9)' // צל כהה כדי שיבלוט על המפה
+                }}>
+                  🏢
                 </div>
                 
                 {/* שם התחנה - מופיע רק בזום של 9 ומעלה */}
@@ -299,7 +291,7 @@ function App() {
                     color: '#9eb3bf',
                     fontSize: '11px',
                     fontWeight: 'bold',
-                    marginTop: '4px',
+                    marginTop: '2px',
                     textShadow: '1px 1px 2px #000, -1px -1px 2px #000',
                     whiteSpace: 'nowrap'
                   }}>
