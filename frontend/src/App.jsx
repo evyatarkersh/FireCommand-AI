@@ -263,14 +263,15 @@ function App() {
                 id="station-icons"
                 type="symbol"
                 layout={{
-                  'icon-image': 'fire-station-15', // האייקון המובנה של Mapbox לתחנת כיבוי
-                  'icon-size': 1.5,
-                  'icon-allow-overlap': true
+                  'text-field': '🚒', // פשוט מחליף לאמוג'י של כבאית (אפשר גם 🛡️ או 🏢)
+                  'text-size': 16,    // גודל האייקון
+                  'text-allow-overlap': true, // מאפשר להם להופיע תמיד
+                  'text-ignore-placement': true
                 }}
                 paint={{
-                  'icon-color': '#007cbf', // כחול מבצעי
-                  'icon-halo-color': '#ffffff',
-                  'icon-halo-width': 1
+                  // אמוג'י לא צריכים צבע, אבל אפשר להוסיף להם הילה כדי שיבלטו מהרקע
+                  'text-halo-color': '#111', 
+                  'text-halo-width': 2
                 }}
               />
               <Layer
