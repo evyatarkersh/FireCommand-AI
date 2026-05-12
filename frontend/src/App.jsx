@@ -37,7 +37,7 @@ function App() {
       .catch(err => console.error("Error loading initial data:", err));
 
 
-      // 2. משיכת התחנות מהראוט החדש שיצרנו בשרת
+    // 2. משיכת התחנות מהראוט החדש שיצרנו בשרת
     fetch(`${BACKEND_URL}/stations`)
       .then(res => res.json())
       .then(data => {
@@ -77,7 +77,7 @@ function App() {
     // --- העדכון החדש שלנו: טיפול ב-JSON החכם ---
     socket.on('commander_update', (data) => {
       console.log(`👨‍✈️ התקבל עדכון מפקד חכם למחוז ${data.district_name}`, data);
-      
+
       // 1. מעדכנים את סיכום המחוז הכללי בסטייט של המחוזות
       if (data.district_overview) {
         setDistrictSummaries(prev => ({
@@ -91,16 +91,16 @@ function App() {
         setFires(prevFires => prevFires.map(fire => {
           // בודקים אם לשריפה הזו יש עדכון במחזור הנוכחי
           const allocationUpdate = data.fires_allocation.find(a => a.event_id === fire.event_id);
-          
+
           if (allocationUpdate) {
             return {
               ...fire,
               tactical_summary: allocationUpdate.tactical_summary
             };
           }
-          
+
           // אם אין עדכון לשריפה הזו, אנחנו מחזירים אותה כמו שהיא (ההמלצה הישנה נשמרת!)
-          return fire; 
+          return fire;
         }));
       }
     });
@@ -225,12 +225,12 @@ function App() {
 
                 {/* --- המלצת שיבוץ טקטית לשריפה --- */}
                 {fire.tactical_summary && (
-                  <div className="commander-recommendation" style={{ 
-                    marginTop: '12px', 
-                    padding: '10px', 
-                    background: '#162424', 
-                    borderRadius: '6px', 
-                    borderLeft: '4px solid #00ffcc' 
+                  <div className="commander-recommendation" style={{
+                    marginTop: '12px',
+                    padding: '10px',
+                    background: '#162424',
+                    borderRadius: '6px',
+                    borderLeft: '4px solid #00ffcc'
                   }}>
                     <div style={{ fontSize: '0.95rem', color: '#fff', lineHeight: '1.4', direction: 'ltr', textAlign: 'left' }}>
                       {fire.tactical_summary}
@@ -256,17 +256,21 @@ function App() {
           mapStyle="mapbox://styles/mapbox/dark-v11"
           mapboxAccessToken={MAPBOX_TOKEN}
         >
-{/* ---> כאן מדביקים את שכבת התחנות <--- */}
+          {/* ---> כאן מדביקים את שכבת התחנות <--- */}
           {stations && (
             <Source id="stations-data" type="geojson" data={stations}>
               <Layer
                 id="station-icons"
-                type="circle"
+                type="symbol"
+                layout={{
+                  'icon-image': 'fire-station-15', // האייקון המובנה של Mapbox לתחנת כיבוי
+                  'icon-size': 1.5,
+                  'icon-allow-overlap': true
+                }}
                 paint={{
-                  'circle-radius': 4,
-                  'circle-color': '#007cbf',
-                  'circle-stroke-width': 1,
-                  'circle-stroke-color': '#fff'
+                  'icon-color': '#007cbf', // כחול מבצעי
+                  'icon-halo-color': '#ffffff',
+                  'icon-halo-width': 1
                 }}
               />
               <Layer

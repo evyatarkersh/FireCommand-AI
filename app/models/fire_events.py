@@ -96,6 +96,7 @@ class FireEvent(db.Model):
             "lon": self.longitude,
             "intensity": self.frp,
             "district": district, # <--- זה השדה הקריטי שחסר לריאקט!
+            "last_update": self.last_update.isoformat(),
             "prediction_polygon": self.prediction_polygon,
             "prediction_summary": getattr(self, 'prediction_summary', "מחשב תחזית...")
         }
