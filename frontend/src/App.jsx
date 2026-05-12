@@ -213,7 +213,7 @@ function App() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', direction: 'ltr' }}>
                   <strong style={{ color: '#fff' }}>🔥 Event #{fire.event_id}</strong>
                   <span style={{ color: '#888', fontSize: '0.8rem' }}>
-                    {new Date(fire.last_update || Date.now()).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(fire.created_at || Date.now()).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
 
@@ -257,43 +257,58 @@ function App() {
           mapboxAccessToken={MAPBOX_TOKEN}
         >
           {/* ---> כאן מדביקים את שכבת התחנות <--- */}
-          {stations && (
-            <Source id="stations-data" type="geojson" data={stations}>
-              <Layer
-                id="station-icons"
-                type="symbol"
-                layout={{
-                  'text-field': '🚒', // פשוט מחליף לאמוג'י של כבאית (אפשר גם 🛡️ או 🏢)
-                  'text-size': 16,    // גודל האייקון
-                  'text-allow-overlap': true, // מאפשר להם להופיע תמיד
-                  'text-ignore-placement': true
-                }}
-                paint={{
-                  // אמוג'י לא צריכים צבע, אבל אפשר להוסיף להם הילה כדי שיבלטו מהרקע
-                  'text-halo-color': '#111', 
-                  'text-halo-width': 2
-                }}
-              />
-              <Layer
-                id="station-labels"
-                type="symbol"
-                minzoom={9}
-                layout={{
-                  'text-field': ['get', 'name'],
-                  'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
-                  'text-offset': [0, 1.2],
-                  'text-anchor': 'top',
-                  'text-size': 11,
-                  'text-allow-overlap': false
-                }}
-                paint={{
-                  'text-color': '#9eb3bf',
-                  'text-halo-color': '#000',
-                  'text-halo-width': 1
-                }}
-              />
-            </Source>
-          )}
+          {/* שכבת תחנות הכיבוי - הפעם כמרקרים של ריאקט (עוקף את מגבלת האמוג'י) */}
+          {stations && stations.features.map((station) => (
+            <Marker
+              key={`station-${station.properties.id}`}
+              longitude={station.geometry.coordinates[0]}
+              latitude={station.geometry.coordinates[1]}
+              anchor="center"
+            >
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                // שקיפות וגודל דינמיים לפי רמת הזום!
+                opacity: viewState.zoom > 8 ? 1 : 0.5,
+                transform: `scale(${viewState.zoom > 8 ? 1 : 0.7})`,
+                transition: 'all 0.3s ease'
+              }}>
+                {/* עיגול הרקע של התחנה */}
+                <div 
+                  style={{
+                    background: '#1a2b3c', // כחול-כהה מבצעי
+                    border: '1.5px solid #007cbf',
+                    borderRadius: '50%',
+                    width: '26px',
+                    height: '26px',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    boxShadow: '0 0 10px rgba(0, 124, 191, 0.4)',
+                    cursor: 'pointer'
+                  }} 
+                  title={station.properties.name} // השם יקפוץ כשעוברים עם העכבר
+                >
+                  <span style={{ fontSize: '14px', lineHeight: '1' }}>🚒</span>
+                </div>
+                
+                {/* שם התחנה - מופיע רק בזום של 9 ומעלה */}
+                {viewState.zoom > 9 && (
+                  <div style={{
+                    color: '#9eb3bf',
+                    fontSize: '11px',
+                    fontWeight: 'bold',
+                    marginTop: '4px',
+                    textShadow: '1px 1px 2px #000, -1px -1px 2px #000',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    {station.properties.name}
+                  </div>
+                )}
+              </div>
+            </Marker>
+          ))}
 
           {fires.map((fire) => (
             <React.Fragment key={fire.event_id}>
