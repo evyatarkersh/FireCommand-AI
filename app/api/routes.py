@@ -244,7 +244,7 @@ from flask import jsonify
 from app.models.resources import Station
 # ודא שיש לך @bp.route או @app.route בהתאם לאיך שהגדרת את הראוטים שלך
 
-@bp.route('/stations', methods=['GET'])
+@api.route('/stations', methods=['GET'])
 def get_stations():
     """
     שולף את כל תחנות הכיבוי מהדאטה-בייס
