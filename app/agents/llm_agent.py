@@ -26,7 +26,8 @@ class LLMAgent:
         """
         # 1. העפנו את Mixtral, השארנו רק את המודלים שעובדים בטוח
         models_waterfall = [
-            "llama-3.3-70b-versatile", # הגאון - 100K טוקנים
+            "llama-3.3-70b-versatile",
+            "qwen/qwen3-32b",# הגאון - 100K טוקנים
             "llama-3.1-8b-instant"     # הגיבוי - 500K טוקנים (סוס עבודה)
         ]
 
