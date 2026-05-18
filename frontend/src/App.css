@@ -151,18 +151,18 @@ body {
   background-color: #2a2a2a;
 }
 
-/* --- Markdown Custom Formatting --- */
-.markdown-container ul {
+/* מוחק רווחים מכל הרשימות בתוך כרטיסיית השריפה כולה */
+.event-card ul {
   margin-top: 8px;
   margin-bottom: 0;
   padding-left: 20px;
 }
 
-/* מוחק את הרווחים הענקיים בין שורות ברשימה (Loose lists) */
-.markdown-container li p {
+/* הדריסה הקריטית: מוחק את הרווחים שהדפדפן דוחף לפסקאות בתוך רשימות Markdown */
+.event-card li p {
   margin: 0 !important; 
 }
 
-.markdown-container li {
+.event-card li {
   margin-bottom: 6px; /* רווח אחיד ועדין בין כל שורה */
 }
