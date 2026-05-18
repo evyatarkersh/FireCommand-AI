@@ -9,6 +9,34 @@ import ReactMarkdown from 'react-markdown';
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
+// פונקציית העזר שלנו - עכשיו היא בחוץ כדי לשמש את כולם!
+const extractJSON = (str) => {
+  if (typeof str !== 'string') return str;
+  try {
+    let cleanStr = str.replace(/```json/gi, '').replace(/```/gi, '').trim();
+    cleanStr = cleanStr.replace(/\\n/g, '\\n');
+    return JSON.parse(cleanStr);
+  } catch (e) {
+    return null;
+  }
+};
+
+// פונקציה שעוברת על הנתונים שהתקבלו (מ-Fetch או Socket) ומנקה את המחוזות
+const processDistrictSummaries = (rawSummaries) => {
+  const cleanSummaries = {};
+  for (const [district, summary] of Object.entries(rawSummaries)) {
+    let finalSummary = summary;
+    if (typeof summary === 'string' && summary.trim().startsWith('{')) {
+      const parsed = extractJSON(summary);
+      if (parsed && parsed.district_overview) {
+        finalSummary = parsed.district_overview;
+      }
+    }
+    cleanSummaries[district] = finalSummary;
+  }
+  return cleanSummaries;
+};
+
 function App() {
   const [viewState, setViewState] = useState({
     longitude: 34.8516,
@@ -27,12 +55,14 @@ function App() {
   const uniqueDistricts = ["All", ...new Set(fires.map(f => f.district).filter(Boolean))];
 
   useEffect(() => {
+    // 1. טיפול בנתונים בטעינה ראשונית (Refresh)
     fetch(`${BACKEND_URL}/active-fires`)
       .then(res => res.json())
       .then(data => {
         setFires(Array.isArray(data.fires) ? data.fires : []);
         if (data.summaries) {
-          setDistrictSummaries(data.summaries);
+          // מנקים את הנתונים בטעינה הראשונית!
+          setDistrictSummaries(processDistrictSummaries(data.summaries));
         }
       })
       .catch(err => console.error("Error loading initial data:", err));
@@ -73,26 +103,16 @@ function App() {
       ));
     });
 
+    // 2. טיפול בנתונים שמגיעים מהסוקט
     socket.on('commander_update', (payload) => {
       console.log(`👨‍✈️ Raw commander update received:`, payload);
       
       let data = payload;
 
-      const extractJSON = (str) => {
-        try {
-          let cleanStr = str.replace(/```json/gi, '').replace(/```/gi, '').trim();
-          cleanStr = cleanStr.replace(/\\n/g, '\\n'); 
-          return JSON.parse(cleanStr);
-        } catch (e) {
-          return null;
-        }
-      };
-
       if (typeof payload === 'string') {
         data = extractJSON(payload) || { district_overview: payload };
       }
 
-      // כאן הקסם שמונע מהבאנר המחוזי להראות JSON גולמי!
       if (data && typeof data.district_overview === 'string' && data.district_overview.trim().startsWith('{')) {
         const parsedInner = extractJSON(data.district_overview);
         if (parsedInner) {
@@ -154,7 +174,7 @@ function App() {
 
     map.loadImage('/fire-station.png', (error, image) => {
       if (error) {
-        console.error("❌ שגיאה בטעינת קובץ ה-PNG. ודא שהוא בתיקיית public ושמו מדויק:", error);
+        console.error("❌ שגיאה בטעינת קובץ ה-PNG:", error);
         return;
       }
       if (!map.hasImage('station-icon')) {
@@ -166,7 +186,6 @@ function App() {
 
   return (
     <div style={{ display: 'flex', width: '100vw', height: '100vh', direction: 'ltr', backgroundColor: '#000' }}>
-
       <div className="sidebar-container">
         <div style={{ padding: '20px', borderBottom: '1px solid #333', background: '#1a1a1a' }}>
           <h2 style={{ color: '#e3eeea', margin: 0, fontSize: '1.4rem', direction: 'ltr' }}>📡 Live Feed</h2>
@@ -204,7 +223,6 @@ function App() {
           </div>
         )}
 
-        {/* --- באנר אסטרטגיה מחוזי (מתקפל!) --- */}
         {selectedDistrict !== "All" && districtSummaries[selectedDistrict] && (
           <div style={{ 
             padding: '16px', 
@@ -229,7 +247,6 @@ function App() {
               </span>
             </div>
             
-            {/* התוכן יוצג רק אם הבאנר פתוח */}
             {isStrategyOpen && (
               <div style={{ marginTop: '12px', fontSize: '0.9rem', color: '#d1d5db', lineHeight: '1.6' }} className="markdown-container">
                 <ReactMarkdown>{districtSummaries[selectedDistrict]}</ReactMarkdown>
@@ -265,20 +282,30 @@ function App() {
                   </span>
                 </div>
 
-                <div className="ai-summary" style={{ 
-                  direction: 'ltr', 
-                  textAlign: 'left', 
-                  marginTop: '12px', 
-                  color: '#9ca3af', 
-                  fontSize: '0.9rem', 
-                  lineHeight: '1.6' 
-                }}>
-                  <ReactMarkdown>
-                    {fire.prediction_summary || "Computing Prediction..."}
-                  </ReactMarkdown>
+                <div style={{ color: '#9ca3af', fontSize: '0.85rem', marginBottom: '8px', direction: 'ltr', textAlign: 'left', marginTop: '4px' }}>
+                  📍 <strong>Lat:</strong> {fire.lat.toFixed(3)}, <strong>Lon:</strong> {fire.lon.toFixed(3)} &nbsp;|&nbsp; <strong>Risk:</strong> {fire.risk || "MODERATE"}
                 </div>
 
-                {/* --- הושארה רק קופסת שיבוץ אחת! --- */}
+                {/* --- קופסת החיזוי (Forecast) המעודכנת --- */}
+                {fire.prediction_summary && (
+                  <div style={{ 
+                    marginTop: '12px', 
+                    padding: '12px 16px', 
+                    background: 'rgba(255, 102, 0, 0.05)', 
+                    borderLeft: '3px solid #ff6600', 
+                    borderRadius: '0 4px 4px 0',
+                    direction: 'ltr',
+                    textAlign: 'left'
+                  }}>
+                    <div style={{ color: '#ff6600', fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>
+                      🔥 Fire Behavior Forecast
+                    </div>
+                    <div style={{ fontSize: '0.9rem', color: '#e5e7eb', lineHeight: '1.5' }} className="markdown-container">
+                      <ReactMarkdown>{fire.prediction_summary}</ReactMarkdown>
+                    </div>
+                  </div>
+                )}
+
                 {fire.tactical_summary && (
                   <div className="commander-recommendation" style={{ 
                     marginTop: '16px', 
@@ -331,7 +358,6 @@ function App() {
                   'icon-opacity': 0.9
                 }}
               />
-
               <Layer
                 id="station-labels"
                 type="symbol"
