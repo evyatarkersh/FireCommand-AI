@@ -19,38 +19,57 @@ class LLMAgent:
         
         self.is_active = True
 
-    def _call_llm_with_fallback(self, prompt, context_name="LLM"):
+    def _call_llm_with_fallback(self, prompt, context_name="LLM", is_json=False):
         """
-        פונקציית עזר פנימית שמנהלת את הניסיונות מול Groq.
-        מנסה קודם את המודל הראשי. אם נכשל, עוברת אוטומטית לגיבוי.
+        פונקציית עזר פנימית שמנהלת את הניסיונות מול Groq (מפל מודלים).
+        מנסה רשימה של מודלים לפי סדר עדיפות עד להצלחה.
         """
-        try:
-            # ניסיון 1: המודל הראשי (70B)
-            chat_completion = self.client.chat.completions.create(
-                messages=[ChatCompletionUserMessageParam(role="user", content=prompt)],
-                model=self.primary_model,
-            )
-            return chat_completion.choices[0].message.content
+        # 1. שרשרת המודלים (Waterfall) - מנצלים את כל המכסות החינמיות של Groq
+        models_waterfall = [
+            "llama-3.3-70b-versatile", # הגאון - 100K טוקנים
+            "mixtral-8x7b-32768",      # גיבוי 1: מעולה ב-JSON - 500K טוקנים
+            "llama-3.1-8b-instant"     # גיבוי 2: סוס עבודה - 500K טוקנים
+        ]
 
-        except Exception as e:
-            error_msg = str(e)
-            print(f"⚠️ {context_name}: Primary model ({self.primary_model}) failed. Reason: {error_msg}")
-            
-            # אם השגיאה היא Rate Limit או סתם עומס, נפעיל את הגיבוי
-            print(f"🔄 {context_name}: Falling back to backup model ({self.fallback_model})...")
-            
+        # 2. הגדרות דיוק (מורידים יצירתיות כדי שיקשיב להוראות)
+        kwargs = {
+            "temperature": 0.1,
+        }
+        
+        # 3. נועלים ל-JSON Mode רק אם ביקשנו במפורש (קריטי להמלצת מפקד)
+        if is_json:
+            kwargs["response_format"] = {"type": "json_object"}
+
+        for model_name in models_waterfall:
             try:
-                # ניסיון 2: מודל הגיבוי (8B)
-                chat_completion_fallback = self.client.chat.completions.create(
-                    messages=[ChatCompletionUserMessageParam(role="user", content=prompt)],
-                    model=self.fallback_model,
-                )
-                return chat_completion_fallback.choices[0].message.content
+                print(f"      🔄 {context_name}: Trying model {model_name}...")
                 
-            except Exception as fallback_error:
-                print(f"❌ {context_name}: Fallback model ALSO failed! Error: {fallback_error}")
-                return f"⚠️ Error: LLM completely unavailable for {context_name}."
+                chat_completion = self.client.chat.completions.create(
+                    messages=[ChatCompletionUserMessageParam(role="user", content=prompt)],
+                    model=model_name,
+                    **kwargs  # מעביר את הטמפרטורה וה-JSON פנימה
+                )
+                
+                print(f"      🟢 {context_name}: Success using {model_name}")
+                return chat_completion.choices[0].message.content
 
+            except Exception as e:
+                error_msg = str(e)
+                # אם המודל הנוכחי סיים את המכסה (Rate Limit), ממשיכים לגיבוי הבא
+                if "429" in error_msg or "Rate limit" in error_msg:
+                    print(f"      ⚠️ {context_name}: {model_name} rate-limited. Moving to next...")
+                    continue 
+                else:
+                    # שגיאה אחרת (למשל בעיית רשת) - עוצרים
+                    print(f"      ❌ {context_name}: Error with {model_name}: {error_msg}")
+                    return None
+
+        # 4. אם עברנו על כל המודלים וכולם חסומים:
+        error_text = f"⚠️ Error: LLM completely unavailable for {context_name}. All models rate-limited."
+        print(error_text)
+        # מחזירים JSON שגיאה אם היינו אמורים להחזיר JSON, אחרת מחזירים טקסט
+        return '{"error": "API Blocked"}' if is_json else error_text
+    
     def summarize_predictions(self, predictions_data):
         if not self.is_active:
             return "⚠️ LLM Agent is inactive."
@@ -145,6 +164,6 @@ class LLMAgent:
         """
         
         # שימוש במנגנון ה-Fallback מול Groq
-        response_text = self._call_llm_with_fallback(prompt, context_name=f"Dispatch {district_name}")
+        response_text = self._call_llm_with_fallback(prompt, context_name=f"Dispatch {district_name}", is_json=True)
         
         return response_text
