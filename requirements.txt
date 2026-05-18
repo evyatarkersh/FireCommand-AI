@@ -67,3 +67,4 @@ gevent-websocket
 apscheduler
 redis
 flask-socketio[redis]
+google-generativeai
