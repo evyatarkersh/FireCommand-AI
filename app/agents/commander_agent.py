@@ -370,7 +370,7 @@ class CommanderAgent:
                         fire_key = f"fire_{target_fire.id}"
                         if fire_key not in llm_summary[district_name]:
                             llm_summary[district_name][fire_key] = {
-                                "status": "RESOLVED",
+                                "status": "ACTIVELY_DISPATCHING",
                                 "location": {
                                     "lat": target_fire.latitude,
                                     "lon": target_fire.longitude
