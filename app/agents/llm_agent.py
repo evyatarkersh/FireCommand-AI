@@ -2,64 +2,92 @@ import os
 import json
 from groq import Groq
 from groq.types.chat import ChatCompletionUserMessageParam
+import google.generativeai as genai
 
 class LLMAgent:
     def __init__(self):
-        self.api_key = os.getenv("GROQ_API_KEY")
-        if not self.api_key:
-            print("❌ LLM Agent Error: GROQ_API_KEY is missing.")
-            self.is_active = False
-            return
+        # 1. טעינת כל מפתחות Groq הזמינים (גם הרגיל וגם הממוספרים)
+        self.groq_keys = [
+            os.getenv("GROQ_API_KEY"),
+            os.getenv("GROQ_API_KEY_1"),
+            os.getenv("GROQ_API_KEY_2"),
+            os.getenv("GROQ_API_KEY_3")
+        ]
+        # מנקה ערכים ריקים מהרשימה
+        self.groq_keys = [k for k in self.groq_keys if k]
 
-        self.client = Groq(api_key=self.api_key)
-        
-        # 1. הגדרת שני המודלים שלנו (המועדף והגיבוי)
-        self.primary_model = "llama-3.3-70b-versatile" # המודל החזק, החכם (והיקר)
-        self.fallback_model = "llama-3.1-8b-instant"   # המודל הקטן, המהיר (לגיבוי)
-        
-        self.is_active = True
+        # 2. אתחול Gemini (מודל הגיבוי הסופי והחזק של גוגל)
+        self.gemini_key = os.getenv("GEMINI_API_KEY")
+        if self.gemini_key:
+            genai.configure(api_key=self.gemini_key)
+            self.gemini_model = genai.GenerativeModel('gemini-2.5-pro')
+        else:
+            self.gemini_model = None
+
+        self.is_active = len(self.groq_keys) > 0 or self.gemini_key is not None
+        if not self.is_active:
+            print("❌ LLM Agent Error: No API keys found for Groq or Gemini.")
 
     def _call_llm_with_fallback(self, prompt, context_name="LLM", is_json=False):
         """
-        פונקציית עזר פנימית שמנהלת את הניסיונות מול Groq (מפל מודלים).
-        מנסה רשימה של מודלים לפי סדר עדיפות עד להצלחה.
+        מנסה כל מפתח של Groq עם המודלים הכי חזקים. 
+        אם כולם נכשלים, עובר ל-Gemini.
         """
-        # 1. העפנו את Mixtral, השארנו רק את המודלים שעובדים בטוח
-        models_waterfall = [
+        # המודלים החזקים בלבד (לא יאבדו לך כבאיות)
+        groq_strong_models = [
             "llama-3.3-70b-versatile",
-            "qwen/qwen3-32b",# הגאון - 100K טוקנים
-            "llama-3.1-8b-instant"     # הגיבוי - 500K טוקנים (סוס עבודה)
+            "openai/gpt-oss-120b"
         ]
 
-        kwargs = {
-            "temperature": 0.1,
-        }
-        
+        kwargs = {"temperature": 0.1}
         if is_json:
             kwargs["response_format"] = {"type": "json_object"}
 
-        for model_name in models_waterfall:
+        # === שלב 1: מנסים את כל המפתחות והמודלים של Groq ===
+        for key_index, api_key in enumerate(self.groq_keys):
+            client = Groq(api_key=api_key)
+            
+            for model_name in groq_strong_models:
+                try:
+                    print(f"      🔄 {context_name}: Trying Groq Key #{key_index+1} with model {model_name}...")
+                    
+                    chat_completion = client.chat.completions.create(
+                        messages=[ChatCompletionUserMessageParam(role="user", content=prompt)],
+                        model=model_name,
+                        **kwargs
+                    )
+                    
+                    print(f"      🟢 {context_name}: Success using Groq Key #{key_index+1} ({model_name})")
+                    return chat_completion.choices[0].message.content
+
+                except Exception as e:
+                    # אם נכשל, פשוט עוברים בשקט לאופציה הבאה
+                    print(f"      ⚠️ {context_name}: Error with {model_name}: {e}")
+                    continue
+
+        # === שלב 2: גיבוי של Gemini (אם Groq קרס לחלוטין) ===
+        if self.gemini_model:
             try:
-                print(f"      🔄 {context_name}: Trying model {model_name}...")
+                print(f"      🚨 {context_name}: Groq exhausted. Trying Gemini 1.5 Pro...")
                 
-                chat_completion = self.client.chat.completions.create(
-                    messages=[ChatCompletionUserMessageParam(role="user", content=prompt)],
-                    model=model_name,
-                    **kwargs
+                generation_config = {"temperature": 0.1}
+                if is_json:
+                    generation_config["response_mime_type"] = "application/json"
+
+                response = self.gemini_model.generate_content(
+                    prompt,
+                    generation_config=generation_config
                 )
-                
-                print(f"      🟢 {context_name}: Success using {model_name}")
-                return chat_completion.choices[0].message.content
-
+                print(f"      🟢 {context_name}: Success using Gemini 1.5 Pro")
+                return response.text
             except Exception as e:
-                # התיקון הקריטי: אין יותר if/else! פשוט מדפיסים את השגיאה וממשיכים למודל הבא מיד.
-                print(f"      ⚠️ {context_name}: Error with {model_name}: {e}")
-                continue 
+                print(f"      ❌ {context_name}: Gemini fallback failed: {e}")
 
-        # הגענו לפה רק אם עברנו על כל המודלים וכולם חסומים:
+        # === שלב 3: הכל קרס ===
         error_text = f"⚠️ Error: LLM completely unavailable for {context_name}."
         print(error_text)
         return '{"error": "API Blocked"}' if is_json else error_text
+    
     
     def summarize_predictions(self, predictions_data):
         if not self.is_active:
