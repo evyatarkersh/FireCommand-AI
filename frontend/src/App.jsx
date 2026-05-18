@@ -73,23 +73,34 @@ function App() {
       ));
     });
 
-    // --- העדכון: טיפול ב-JSON החכם והמרתו ---
     socket.on('commander_update', (payload) => {
       console.log(`👨‍✈️ Raw commander update received:`, payload);
       
       let data = payload;
 
-      // אם השרת שלח לנו את ה-JSON בתור מחרוזת טקסט, נמיר אותו לאובייקט
-      if (typeof payload === 'string') {
+      const extractJSON = (str) => {
         try {
-          data = JSON.parse(payload);
+          let cleanStr = str.replace(/```json/gi, '').replace(/```/gi, '').trim();
+          cleanStr = cleanStr.replace(/\\n/g, '\\n'); 
+          return JSON.parse(cleanStr);
         } catch (e) {
-          console.error("❌ Failed to parse LLM JSON:", e);
-          return; // עוצרים אם זה לא JSON תקין
+          return null;
+        }
+      };
+
+      if (typeof payload === 'string') {
+        data = extractJSON(payload) || { district_overview: payload };
+      }
+
+      // כאן הקסם שמונע מהבאנר המחוזי להראות JSON גולמי!
+      if (data && typeof data.district_overview === 'string' && data.district_overview.trim().startsWith('{')) {
+        const parsedInner = extractJSON(data.district_overview);
+        if (parsedInner) {
+          data = { ...data, ...parsedInner };
         }
       }
 
-      if (data.district_overview) {
+      if (data.district_overview && typeof data.district_overview === 'string' && !data.district_overview.trim().startsWith('{')) {
         setDistrictSummaries(prev => ({
           ...prev,
           [data.district_name]: data.district_overview
@@ -99,7 +110,10 @@ function App() {
       if (data.fires_allocation && Array.isArray(data.fires_allocation)) {
         setFires(prevFires => prevFires.map(fire => {
           const allocationUpdate = data.fires_allocation.find(a => a.event_id === fire.event_id);
-          return allocationUpdate ? { ...fire, tactical_summary: allocationUpdate.tactical_summary } : fire;
+          if (allocationUpdate && allocationUpdate.tactical_summary) {
+            return { ...fire, tactical_summary: allocationUpdate.tactical_summary };
+          }
+          return fire;
         }));
       }
     });

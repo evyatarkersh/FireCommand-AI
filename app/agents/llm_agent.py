@@ -74,6 +74,7 @@ class LLMAgent:
         3. **Vector Format:** Always write the textual cardinal direction first, followed by the numeric degrees in parentheses (e.g., South-East (130°)).
         4. Do NOT include Lat/Lon coordinates in this text.
         5. Return ONLY the Markdown text. No conversational filler.
+        6. STRICT METRICS: Limit the 'Key Metrics' list EXACTLY to the 4 items shown in the example (Vector, Wind, Fuel, Intensity). DO NOT add Temperature, Time, or any other metrics.
 
         EXAMPLE OUTPUT FORMAT:
         **🔥 Threat Assessment:**
