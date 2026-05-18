@@ -58,7 +58,7 @@ class LLMAgent:
         if not predictions_data:
             return "✅ No new predictions to summarize."
 
-        print("🤖 LLM Agent: Translating prediction data into human-readable summary...")
+        print("🤖 LLM Agent: Translating prediction data into human-readable tactical summary...")
 
         data_str = json.dumps(predictions_data, ensure_ascii=False, indent=2)
 
@@ -66,18 +66,26 @@ class LLMAgent:
         You are a tactical forecasting analyst for the Fire and Rescue Service.
         Data (JSON): {data_str}
 
-        Task: Translate the JSON into a strict, highly concise 2-line briefing.
+        Task: Analyze the raw fire data and provide a tactical forecast using a clear, human-readable structure.
 
         RULES:
-        1. ROUND Lat/Lon to 3 decimal places.
-        2. MAX 2 sentences for the forecast. NO fluff, NO filler words.
-        3. Follow the exact style of the Example Output.
+        1. **Threat Assessment:** Write exactly ONE flowing, natural sentence that explains the actual danger. Focus on the 'So what?' (e.g., is it moving fast? is it threatening buildings?). Avoid robotic, data-dump phrasing.
+        2. **Key Metrics:** Extract the raw numbers into a clean bulleted list exactly as shown in the example.
+        3. **Vector Format:** Always write the textual cardinal direction first, followed by the numeric degrees in parentheses (e.g., South-East (130°)).
+        4. Do NOT include Lat/Lon coordinates in this text.
+        5. Return ONLY the Markdown text. No conversational filler.
 
         EXAMPLE OUTPUT FORMAT:
-        📍 **Location & Risk:** Lat 31.844, Lon 34.678 | Risk: MODERATE
-        🔥 **Forecast:** Fire spreading at 130° (South-East) at 195 m/h, fueled by built area structures. Flame lengths of 0.98m are driven by northwest winds at 7.8 km/h.
+        **🔥 Threat Assessment:**
+        The fire is spreading rapidly eastward into built areas, driven by strong winds, presenting a significant threat to nearby infrastructure.
 
-        YOUR OUTPUT (Analyze the JSON and use the exact format above):
+        **📊 Key Metrics:**
+        * 🧭 **Vector:** South-East (130°)
+        * 💨 **Wind:** Northwest (7.8 km/h)
+        * 🌾 **Fuel:** Built area structures
+        * 📏 **Intensity:** Spread: 195 m/h | Flame: 0.98m
+
+        YOUR OUTPUT:
         """
 
         # שימוש במנגנון ה-Fallback החדש
@@ -110,6 +118,7 @@ class LLMAgent:
         3. ROUND Lat/Lon to 3 decimal places in your tactical summaries.
         4. Use Markdown formatting (\n\n for new paragraphs, **bold** for titles, * for bullet points) INSIDE the JSON string values.
         5. The `event_id` in the `fires_allocation` array MUST be an integer (extract the number from keys like "fire_8").
+        6. DO NOT include exact coordinates (Lat/Lon) inside the Tactical Assessment paragraph. Focus strictly on the threat analysis and rationale.
         
         FORMATTING RULES:
         - `district_overview`: Provide a "Strategic Focus" (1-2 sentences explaining the logic of the district's resource allocation) followed by a "Unit Distribution" bulleted list mapping events to units.
