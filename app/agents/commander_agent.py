@@ -392,8 +392,12 @@ class CommanderAgent:
                                                                             available_supply.get("ESHED", []),
                                                                             allocated_in_this_cycle)
                                 if allocated_eshed:
+                                    eshed_eta = self._get_driving_eta_minutes(
+                                        allocated_eshed.current_lon, allocated_eshed.current_lat,
+                                        target_fire.longitude, target_fire.latitude
+                                    )
                                     llm_summary[district_name][fire_key]["resources"].append(
-                                        {"type": "ESHED (Water Supply)", "eta_minutes": "N/A",
+                                        {"type": "ESHED (Water Supply)", "eta_minutes": round(eshed_eta, 1),
                                          "station": allocated_eshed.station.name if allocated_eshed.station else "Unknown"})
             return True
         else:
