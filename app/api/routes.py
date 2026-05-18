@@ -259,6 +259,6 @@ def health_check():
     ראוט ייעודי עבור UptimeRobot כדי להשאיר את השרת ער.
     מחזיר תשובה מהירה וקלה.
     """
-    current_time = datetime.now().strftime("%H:%M:%S")
+    current_time = datetime.datetime.now().strftime("%H:%M:%S")
     print(f"🩺 [{current_time}] [KEEP-ALIVE] UptimeRobot pinged /health")
     return {"status": "alive", "message": "FireCommand is awake!"}, 200
