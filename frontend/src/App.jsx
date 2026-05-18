@@ -22,6 +22,7 @@ function App() {
   const [selectedDistrict, setSelectedDistrict] = useState("All");
   const [stations, setStations] = useState(null);
   const [iconLoaded, setIconLoaded] = useState(false);
+  const [isStrategyOpen, setIsStrategyOpen] = useState(true);
 
   const uniqueDistricts = ["All", ...new Set(fires.map(f => f.district).filter(Boolean))];
 
@@ -189,6 +190,7 @@ function App() {
           </div>
         )}
 
+        {/* --- באנר אסטרטגיה מחוזי (מתקפל!) --- */}
         {selectedDistrict !== "All" && districtSummaries[selectedDistrict] && (
           <div style={{ 
             padding: '16px', 
@@ -198,15 +200,27 @@ function App() {
             direction: 'ltr',
             textAlign: 'left'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-              <span style={{ fontSize: '1.2rem' }}>🎖️</span>
-              <h3 style={{ margin: 0, color: '#ff9900', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                Command Strategy: {selectedDistrict}
-              </h3>
+            <div 
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+              onClick={() => setIsStrategyOpen(!isStrategyOpen)}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '1.2rem' }}>🎖️</span>
+                <h3 style={{ margin: 0, color: '#ff9900', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                  Command Strategy: {selectedDistrict}
+                </h3>
+              </div>
+              <span style={{ color: '#ff9900', fontSize: '1.2rem', fontWeight: 'bold' }}>
+                {isStrategyOpen ? '−' : '+'}
+              </span>
             </div>
-            <div style={{ margin: 0, fontSize: '0.9rem', color: '#d1d5db', lineHeight: '1.6' }} className="markdown-container">
-              <ReactMarkdown>{districtSummaries[selectedDistrict]}</ReactMarkdown>
-            </div>
+            
+            {/* התוכן יוצג רק אם הבאנר פתוח */}
+            {isStrategyOpen && (
+              <div style={{ marginTop: '12px', fontSize: '0.9rem', color: '#d1d5db', lineHeight: '1.6' }} className="markdown-container">
+                <ReactMarkdown>{districtSummaries[selectedDistrict]}</ReactMarkdown>
+              </div>
+            )}
           </div>
         )}
 
