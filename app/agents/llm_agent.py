@@ -24,19 +24,16 @@ class LLMAgent:
         פונקציית עזר פנימית שמנהלת את הניסיונות מול Groq (מפל מודלים).
         מנסה רשימה של מודלים לפי סדר עדיפות עד להצלחה.
         """
-        # 1. שרשרת המודלים (Waterfall) - מנצלים את כל המכסות החינמיות של Groq
+        # 1. העפנו את Mixtral, השארנו רק את המודלים שעובדים בטוח
         models_waterfall = [
             "llama-3.3-70b-versatile", # הגאון - 100K טוקנים
-            "mixtral-8x7b-32768",      # גיבוי 1: מעולה ב-JSON - 500K טוקנים
-            "llama-3.1-8b-instant"     # גיבוי 2: סוס עבודה - 500K טוקנים
+            "llama-3.1-8b-instant"     # הגיבוי - 500K טוקנים (סוס עבודה)
         ]
 
-        # 2. הגדרות דיוק (מורידים יצירתיות כדי שיקשיב להוראות)
         kwargs = {
             "temperature": 0.1,
         }
         
-        # 3. נועלים ל-JSON Mode רק אם ביקשנו במפורש (קריטי להמלצת מפקד)
         if is_json:
             kwargs["response_format"] = {"type": "json_object"}
 
@@ -47,27 +44,20 @@ class LLMAgent:
                 chat_completion = self.client.chat.completions.create(
                     messages=[ChatCompletionUserMessageParam(role="user", content=prompt)],
                     model=model_name,
-                    **kwargs  # מעביר את הטמפרטורה וה-JSON פנימה
+                    **kwargs
                 )
                 
                 print(f"      🟢 {context_name}: Success using {model_name}")
                 return chat_completion.choices[0].message.content
 
             except Exception as e:
-                error_msg = str(e)
-                # אם המודל הנוכחי סיים את המכסה (Rate Limit), ממשיכים לגיבוי הבא
-                if "429" in error_msg or "Rate limit" in error_msg:
-                    print(f"      ⚠️ {context_name}: {model_name} rate-limited. Moving to next...")
-                    continue 
-                else:
-                    # שגיאה אחרת (למשל בעיית רשת) - עוצרים
-                    print(f"      ❌ {context_name}: Error with {model_name}: {error_msg}")
-                    return None
+                # התיקון הקריטי: אין יותר if/else! פשוט מדפיסים את השגיאה וממשיכים למודל הבא מיד.
+                print(f"      ⚠️ {context_name}: Error with {model_name}: {e}")
+                continue 
 
-        # 4. אם עברנו על כל המודלים וכולם חסומים:
-        error_text = f"⚠️ Error: LLM completely unavailable for {context_name}. All models rate-limited."
+        # הגענו לפה רק אם עברנו על כל המודלים וכולם חסומים:
+        error_text = f"⚠️ Error: LLM completely unavailable for {context_name}."
         print(error_text)
-        # מחזירים JSON שגיאה אם היינו אמורים להחזיר JSON, אחרת מחזירים טקסט
         return '{"error": "API Blocked"}' if is_json else error_text
     
     def summarize_predictions(self, predictions_data):
