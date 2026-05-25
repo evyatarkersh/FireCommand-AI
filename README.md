@@ -1,93 +1,44 @@
-# FireCommand-AI
 # FireCommand-AI 🚀
-### Autonomous Multi-Agent Wildfire Monitoring & Tactical Dispatch Optimization System
+### Real-Time Wildfire Monitoring & Intelligent Multi-Agent Resource Dispatch System
 
-FireCommand-AI is an advanced, production-grade decision-support and automation system designed for fire and rescue services. The platform autonomously ingests real-time satellite fire data, enriches it with multi-source environmental and topographical data, models fire propagation, and optimizes tactical resource allocation using Mixed-Integer Linear Programming (MILP).
+**Live Dashboard:** 🌐 [firecommand-ai-dash-board.onrender.com](https://firecommand-ai-dash-board.onrender.com/)
 
 ---
 
-## 🧠 System Architecture & Multi-Agent Design
+## 🎯 The Problem & Our Vision
 
-The system is built around a **Spatio-Temporal Loop (Master Cycle)** driven by an orchestrated network of specialized, asynchronous AI and Mathematical agents:
+During massive wildfire events, emergency response centers often suffer from **"The Fog of War"**—facing delayed satellite alerts, a complete lack of situational awareness regarding fire propagation, and high-stress environments. Managing multiple concurrent fire incidents leads to chaotic and suboptimal fire-truck dispatch decisions. 
 
-* **Ingestion Agent:** Periodically fetches near real-time wildfire hotspots from NASA's FIRMS API (MODIS/VIIRS).
-* **Enrichment Agents:** * **Weather Agent (IMS & OWM):** Fetches real-time wind speed, direction, humidity, and temperature.
-    * **Topography Agent:** Analyzes slope, elevation, and aspect at the fire coordinates.
-    * **Fuel Agent:** Determines fuel type (Forest, Brush, Built Area) and fuel load.
-* **Predictor Agent:** Calculates the Rate of Spread (ROS) and flame length, generating geographic prediction polygons (`GeoJSON`).
-* **Commander Agent (Optimization Core):** Runs a MILP model via `PuLP` that optimizes resource distribution under hard operational constraints (Suppressing Difficulty Index - SDI).
-* **Communications Agent (LLM):** Utilizes **Google Gemini 1.5 Flash** (with a fallback mesh to **Groq/LLaMA 3.3**) to transform raw mathematical dispatch data into clear, human-readable tactical summaries in Hebrew for command centers.
+**FireCommand-AI** shifts fire-fighting from a reactive struggle to a proactive, data-driven operation. By automating data digestion and utilizing advanced mathematical dispatch models, the platform manages multiple parallel incidents seamlessly, eliminating human panic and maximizing containment efficiency.
+
+---
+
+## ✨ Key Features
+
+* **Live Global Map Interface:** Displays active real-time wildfire hotspots overlaid with local fire station locations for complete situational awareness.
+* **NASA Satellite Integration:** Ingests live thermal anomaly data directly from NASA satellites to identify breakouts as they happen.
+* **Visual & Textual Propagation Forecasting:** Calculates and renders dynamic hazard prediction polygons on the map, accompanied by detailed textual summaries of the fire's Rate of Spread (ROS) and risk levels.
+* **Multi-Incident Resource Allocation:** Simultaneously monitors multiple fires across regions and automatically resolves resource conflicts, prioritizing high-risk zones without draining critical station reserves.
+* **Geospatial ETA Constraints:** The allocation algorithm explicitly accounts for precise travel times (ETA) and Haversine distances from stations to the hot-zones to ensure every dispatch is realistic and optimal.
+
+---
+
+## 🧠 System Architecture & AI Core
+
+The platform is powered by an advanced **Asynchronous Multi-Agent Architecture** integrated with state-of-the-art AI Language Models, driving a continuous strategic cycle:
+
+* **Autonomous Multi-Agent Mesh:** Specialized, independent backend agents collaborate in real time—handling ingestion of NASA streams, enrichment of spatial properties, and wildfire predictive modeling to define containment requirements.
+* **Resilient LLM Integration:** Powered by a cross-provider LLM infrastructure featuring a high-availability fallback mesh. The system seamlessly transforms complex mathematical dispatch matrices into clear, structured, and actionable human-readable tactical commands for command centers.
+* **Mathematical Optimization Engine:** Formulates a global resource allocation matrix, evaluating available fleets against all active incidents concurrently to deploy the fastest, most effective team configuration.
 
 ---
 
 ## 🛠️ Tech Stack
 
+* **Frontend:** React, Interactive Map Rendering
 * **Backend Framework:** Python 3.13, Flask, Flask-SQLAlchemy
-* **Real-time Communication:** Flask-SocketIO, WebSockets, gevent
-* **Mathematical Optimization:** PuLP (COIN-OR CBC Solver)
-* **Geospatial Processing:** Shapely, PyProj, OSRM (Open Source Routing Machine) API
-* **AI Orchestration:** Google GenAI SDK, Groq SDK (Cross-Provider Fallback Architecture)
-* **Database & Cache:** PostgreSQL (JSONB support), Redis (SocketIO Message Queue)
-* **Deployment:** Render (Cloud Production Environment)
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-* Python 3.13+
-* Homebrew (for macOS geospatial dependencies)
-* Redis Server
-
-### Local Installation
-
-1.  **Clone the repository:**
-    ```bash
-    git clone [https://github.com/your-username/FireCommand-AI.git](https://github.com/your-username/FireCommand-AI.git)
-    cd FireCommand-AI
-    ```
-
-2.  **Install system-level geospatial engines (macOS Example):**
-    ```bash
-    brew install proj
-    ```
-
-3.  **Set up Virtual Environment & Install Dependencies:**
-    ```bash
-    python3 -m venv .venv
-    source .venv/bin/activate
-    PROJ_DIR=/opt/homebrew/opt/proj pip install pyproj==3.6.1
-    pip install -r requirements.txt --no-deps
-    ```
-
-4.  **Configure Environment Variables (`.env`):**
-    Create a `.env` file in the root directory:
-    ```env
-    DATABASE_URL=postgresql://user:password@localhost:5432/firecommand
-    REDIS_URL=redis://localhost:6375
-    GEMINI_API_KEY=your_google_ai_studio_key
-    GROQ_API_KEY=your_groq_key
-    ```
-
-5.  **Run the Applications:**
-    * To start the Web/API server:
-        ```bash
-        python run.py
-        ```
-    * To start the background automated processing engine (Worker):
-        ```bash
-        python worker.py
-        ```
-
----
-
-## 📊 Key Architectural Features Showcase
-
-### 🔄 Cross-Provider LLM Fallback Mesh
-To guarantee 100% operational uptime without request blocking (Rate Limits), the system features a custom waterfall fallback handler:
-1.  **Primary:** Google Gemini 1.5 Flash (Generous free tier, strict JSON schema output via `response_mime_type`).
-2.  **Secondary Fallback:** Groq Cloud (`llama-3.3-70b-versatile`).
-3.  **Final Fallback:** Groq Cloud (`llama-3.1-8b-instant`).
-
-### ⚡ Massively Parallel Routing (OSRM Table Integration)
-Instead of hammering the routing server with $N \times M$ separate HTTP requests for every station-to-fire combination, the `CommanderAgent` aggregates all coordinates into a single batched **OSRM Table API** call, reducing routing calculation time from minutes to milliseconds.
+* **Real-time Networking:** Flask-SocketIO, WebSockets
+* **AI & Language Architecture:** Multi-Provider LLM Integration (Google Gemini 1.5 Flash & Groq / LLaMA 3.3) & Prompt Orchestration
+* **Mathematical Optimization:** Mixed-Integer Linear Programming (MILP) solvers
+* **Geospatial Engines:** Shapely, PyProj, OSRM (Open Source Routing Machine) API
+* **Cloud Infrastructure:** Render (Live Hosting Environment), Neon (Serverless PostgreSQL Database), Redis Message Queue
