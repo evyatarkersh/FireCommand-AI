@@ -467,18 +467,22 @@ class CommanderAgent:
 
         for district, fires_data in llm_summary_json.items():
             try:
-                # 1. קבלת התשובה מה-LLM (זו מחרוזת טקסט שאמורה להכיל JSON)
+                # 1. קבלת התשובה מה-LLM
                 raw_summary_string = llm.summarize_dispatch(district, fires_data)
                 print(f"   ✅ התקבל פלט LLM גולמי למחוז {district}:\n      {raw_summary_string}\n")
 
-                # 2. ניסיון להמיר את המחרוזת לאובייקט פייתון (מילון)
+                # 2. המרת המחרוזת לאובייקט פייתון (מילון)
                 try:
                     structured_data = json.loads(raw_summary_string)
-                    # --- התוספת החדשה: עדכון השריפות בדאטה-בייס ---
                     # שולפים את מערך ההמלצות (או רשימה ריקה אם אין)
                     fires_allocation = structured_data.get("fires_allocation", [])
 
                     for allocation in fires_allocation:
+                        # 🌟 השכפ"צ שלנו: מוודאים שזה מילון ולא מחרוזת הזויה!
+                        if not isinstance(allocation, dict):
+                            print(f"      ⚠️ דילוג על פריט פגום ב-JSON של מחוז {district}: {allocation}")
+                            continue # מדלגים לפריט הבא בלי לקרוס
+
                         event_id = allocation.get("event_id")
                         tactical_summary = allocation.get("tactical_summary")
 
@@ -490,9 +494,9 @@ class CommanderAgent:
 
                     # שומרים את כל העדכונים של השריפות בבת אחת
                     db.session.commit()
+                    
                 except json.JSONDecodeError as e:
                     print(f"❌ Error: LLM did not return valid JSON for {district}. Exception: {e}")
-                    # מנגנון הגנה: יצירת אובייקט "חירום" כדי לא לשבור את הריאקט
                     structured_data = {
                         "district_name": district,
                         "district_overview": "⚠️ Error formatting dispatch strategy.",
