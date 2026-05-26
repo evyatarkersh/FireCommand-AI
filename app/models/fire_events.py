@@ -112,5 +112,8 @@ class FireEvent(db.Model):
             "created_at": self.created_at.isoformat(),
             "prediction_polygon": self.prediction_polygon,
             "prediction_summary": getattr(self, 'prediction_summary', "מחשב תחזית..."),
-            "tactical_summary": getattr(self, 'tactical_summary', "מחשב סיכום טקטי...")
+            "tactical_summary": getattr(self, 'tactical_summary', "מחשב סיכום טקטי..."),
+            "demand_perimeter_m": self.demand_perimeter_m or 0.0,
+            "fuel_type": self.fuel_type or "Unknown Terrain",
+            "risk": self.pred_risk_level or "MODERATE"
         }

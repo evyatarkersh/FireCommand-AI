@@ -5,6 +5,7 @@ from app.extensions import db
 from sqlalchemy import text
 from app.agents.nasa_agent import NasaIngestionService
 from app.agents.open_weather_map_agent import WeatherService
+  
 
 # --- ייבוא הסוכנים החדשים ---
 from app.agents.nasa_agent import NasaIngestionService
@@ -262,3 +263,30 @@ def health_check():
     current_time = datetime.datetime.now().strftime("%H:%M:%S")
     print(f"🩺 [{current_time}] [KEEP-ALIVE] UptimeRobot pinged /health")
     return {"status": "alive", "message": "FireCommand is awake!"}, 200
+
+
+
+# ודא שיש לך את ה-import של cross_origin בראש הקובץ או כאן
+from flask_cors import cross_origin
+
+@api.route('/api/debug/reset', methods=['POST', 'OPTIONS']) # הוספנו תמיכה מפורשת ב-OPTIONS עבור ה-Preflight
+@cross_origin() # מכריח את Flask לאשר CORS ספציפית לראוט הזה
+def reset_database_route():
+    try:
+        print("🚨 [API Request] Received reset command from React Dashboard...")
+        
+        # הייבוא המקומי שפותר את ה-Circular Import
+        from init_db import initialize_database  
+        
+        # הרצת הלוגיקה שלך
+        initialize_database()
+        
+        print("✅ [API Request] Database successfully re-initialized.")
+        return jsonify({
+            "status": "success", 
+            "message": "Database cleared and re-seeded successfully."
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ [API Request] Reset failed with error: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
