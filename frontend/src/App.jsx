@@ -184,13 +184,92 @@ function App() {
     });
   };
 
+  const handleResetDatabase = async () => {
+    // חלון אישור קופץ כדי שלא תלחץ בטעות באמצע המצגת
+    if (!window.confirm("🚨 Are you sure you want to reset the system and delete all data?")) {
+      return;
+    }
+
+    try {
+      // פנייה לראוט החדש שיצרנו בשרת
+      const response = await fetch(`${BACKEND_URL}/api/debug/reset`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        console.log("🔄 Database initialized successfully:", data.message);
+        
+        setFires([]); // מרוקן מיד את רשימת השריפות מהמסך ללא צורך ברענון!
+        setFocusedFireId(null); // מאפס את הפוקוס במפה
+        
+        alert("המערכת אותחלה בהצלחה! כל השריפות נמחקו והתחנות נטענו מחדש.");
+      } else {
+        alert(`שגיאה באיפוס המערכת: ${data.message || 'שגיאה לא ידועה'}`);
+      }
+    } catch (error) {
+      console.error("Error connecting to reset endpoint:", error);
+      alert("שגיאה בתקשורת עם השרת - ודא ששרת ה-Flask רץ");
+    }
+  };
+
   return (
     <div style={{ display: 'flex', width: '100vw', height: '100vh', direction: 'ltr', backgroundColor: '#000' }}>
       <div className="sidebar-container">
-        <div style={{ padding: '20px', borderBottom: '1px solid #333', background: '#1a1a1a' }}>
-          <h2 style={{ color: '#e3eeea', margin: 0, fontSize: '1.4rem', direction: 'ltr' }}>📡 Live Feed</h2>
+        {/* כותרת ה-Live Feed המקורית והנקייה - ללא פלקסבוקס שיזיז את הטקסט */}
+        <div style={{ 
+          padding: '20px', 
+          borderBottom: '1px solid #333', 
+          background: '#1a1a1a', 
+          position: 'relative' // קריטי כדי שהכפתור יתמקד לפי הריבוע הזה
+        }}>
+          <h2 style={{ color: '#e3eeea', margin: 0, fontSize: '1.4rem', direction: 'ltr' }}>
+            📡 Live Feed
+          </h2>
+          
+          {/* כפתור איפוס צף - ממוקם אבסולוטית בפינה הימנית ללא שום קשר לכותרת */}
+          <button
+            onClick={handleResetDatabase}
+            title="איפוס סימולציה ומחיקת נתונים"
+            style={{
+              position: 'absolute',
+              right: '20px', 
+              top: '50%', 
+              transform: 'translateY(-50%)', 
+              background: '#27272a', // רקע כהה שמפריד אותו מהכותרת
+              color: '#e4e4e7', // טקסט בהיר וקריא
+              border: '1px solid #3f3f46', // מסגרת עדינה
+              borderRadius: '6px', // פינות מעוגלות מודרניות
+              padding: '6px 12px', // הגדלנו מעט את ה-Padding שיהיה שטח לחיצה נוח
+              fontSize: '0.75rem',
+              fontWeight: 'bold',
+              letterSpacing: '0.5px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.3)', // צל קליל שיוצר עומק ותחושת לחיצות
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => { 
+              e.currentTarget.style.background = '#dc2626'; // נצבע באדום ברור ב-Hover
+              e.currentTarget.style.borderColor = '#b91c1c';
+              e.currentTarget.style.color = '#fff';
+            }}
+            onMouseLeave={(e) => { 
+              e.currentTarget.style.background = '#27272a'; // חוזר למצב רגיל
+              e.currentTarget.style.borderColor = '#3f3f46';
+              e.currentTarget.style.color = '#e4e4e7';
+            }}
+          >
+            🔄 RESET
+          </button>
         </div>
-
+      
         {uniqueDistricts.length > 1 && (
           <div style={{
             padding: '10px 20px',
@@ -237,7 +316,7 @@ function App() {
               onClick={() => setIsStrategyOpen(!isStrategyOpen)}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '1.2rem' }}>🎖️</span>
+                <span style={{ fontSize: '1.2rem' }}></span>
                 <h3 style={{ margin: 0, color: '#ff9900', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '1px' }}>
                   Command Strategy: {selectedDistrict}
                 </h3>
@@ -275,16 +354,33 @@ function App() {
                 className={`event-card ${focusedFireId === fire.event_id ? 'focused' : ''}`}
                 onClick={() => handleCardClick(fire)}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', direction: 'ltr' }}>
-                  <strong style={{ color: '#fff' }}>🔥 Event #{fire.event_id}</strong>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', direction: 'ltr', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <strong style={{ color: '#fff', fontSize: '1.1rem', letterSpacing: '0.5px' }}>
+                      🔥 Event {fire.event_id}
+                    </strong>
+                  </div>
                   <span style={{ color: '#888', fontSize: '0.8rem' }}>
                     {new Date(fire.created_at || Date.now()).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
 
-                <div style={{ color: '#9ca3af', fontSize: '0.85rem', marginBottom: '8px', direction: 'ltr', textAlign: 'left', marginTop: '4px' }}>
-                  📍 <strong>Lat:</strong> {fire.lat.toFixed(3)}, <strong>Lon:</strong> {fire.lon.toFixed(3)} &nbsp;|&nbsp; <strong>Risk:</strong> {fire.risk || "MODERATE"}
+                {/* שורת תגיות (Badges) - צבעים לפי רמת סיכון וסוג שטח */}
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px', direction: 'ltr' }}>
+                  <span style={{
+                    background: fire.risk === 'CRITICAL' ? '#dc2626' : fire.risk === 'HIGH' ? '#ea580c' : '#ca8a04',
+                    color: '#fff', padding: '3px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold'
+                  }}>
+                    {fire.risk || "MODERATE"} RISK
+                  </span>
+                  
+                  <span style={{ background: '#1e3a8a', color: '#bfdbfe', padding: '3px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                    📍 {fire.district || "Unknown District"}
+                  </span>
+                  
                 </div>
+
+                
 
                 {/* --- קופסת החיזוי (Forecast) המעודכנת --- */}
                 {fire.prediction_summary && (
@@ -298,7 +394,7 @@ function App() {
                     textAlign: 'left'
                   }}>
                     <div style={{ color: '#ff6600', fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>
-                      🔥 Fire Behavior Forecast
+                      Fire Behavior Forecast
                     </div>
                     <div style={{ fontSize: '0.9rem', color: '#e5e7eb', lineHeight: '1.5' }} className="markdown-container">
                       <ReactMarkdown>{fire.prediction_summary}</ReactMarkdown>
@@ -325,10 +421,7 @@ function App() {
                   </div>
                 )}
 
-                <div style={{ marginTop: '12px', direction: 'rtl' }}>
-                  <span className="tag" style={{ fontSize: '1rem', background: '#333' }}>Intensity: {fire.intensity}</span>
-                  {fire.prediction_polygon && <span className="tag" style={{ background: '#224422', color: '#44ff44' }}>Active Prediction 🛡️</span>}
-                </div>
+              
               </div>
             ));
           })()}
