@@ -123,7 +123,8 @@ class LLMAgent:
         4. Do NOT include Lat/Lon coordinates in this text.
         5. Return ONLY the Markdown text. No conversational filler.
         6. STRICT METRICS: Limit the 'Key Metrics' list EXACTLY to the 4 items shown in the example (Vector, Wind, Fuel, Intensity). DO NOT add Temperature, Time, or any other metrics.
-
+        7. **Time Horizon Context:** Locate the 'time_horizon_hours' value in the JSON data. You MUST include this timeframe explicitly in both the title of the Threat Assessment and within its sentence (e.g., "Over the next X hours...")
+        
         EXAMPLE OUTPUT FORMAT:
         **🔥 Threat Assessment:**
         The fire is spreading rapidly eastward into built areas, driven by strong winds, presenting a significant threat to nearby infrastructure.
