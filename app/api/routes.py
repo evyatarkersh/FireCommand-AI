@@ -5,9 +5,6 @@ import time
 
 from flask import Blueprint, jsonify
 from sqlalchemy import text
-from app.agents.nasa_agent import NasaIngestionService
-from app.agents.open_weather_map_agent import WeatherService
-  
 
 from app.agents.monitor_agent import MonitorAgent
 from app.agents.nasa_agent import NasaIngestionService
@@ -272,28 +269,28 @@ def health_check():
     return {"status": "alive", "message": "FireCommand is awake!"}, 200
 
 
-
-# ודא שיש לך את ה-import של cross_origin בראש הקובץ או כאן
 from flask_cors import cross_origin
 
-@api.route('/api/debug/reset', methods=['POST', 'OPTIONS']) # הוספנו תמיכה מפורשת ב-OPTIONS עבור ה-Preflight
-@cross_origin() # מכריח את Flask לאשר CORS ספציפית לראוט הזה
+
+@api.route('/api/debug/reset', methods=['POST', 'OPTIONS'])
+@cross_origin()
 def reset_database_route():
+    """Resets the entire database by clearing all tables and re-seeding with initial data, handling CORS preflight requests and returning success or error status with appropriate messages."""
     try:
         print("🚨 [API Request] Received reset command from React Dashboard...")
-        
-        # הייבוא המקומי שפותר את ה-Circular Import
-        from init_db import initialize_database  
-        
-        # הרצת הלוגיקה שלך
+
+        # Local import to avoid circular dependency issues
+        from init_db import initialize_database
+
+        # Execute the database reset and re-initialization
         initialize_database()
-        
+
         print("✅ [API Request] Database successfully re-initialized.")
         return jsonify({
-            "status": "success", 
+            "status": "success",
             "message": "Database cleared and re-seeded successfully."
         }), 200
-        
+
     except Exception as e:
         print(f"❌ [API Request] Reset failed with error: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
