@@ -1,8 +1,18 @@
+"""
+Service module for seeding fire station and resource data into the database.
+This module provides functionality to populate the database with real Israeli fire stations across all districts,
+along with their associated firefighting resources such as vehicles and aircraft.
+"""
+
 from app.extensions import db
 from app.models.resources import Station, Resource
 
 
 def seed_real_israel_stations():
+    """
+    Seeds the database with all Israeli fire stations and their resources across multiple districts.
+    Creates stations with geographic coordinates and assigns appropriate resources based on station type (Regional stations get 4 SAAR, 2 ESHED, 2 ROTEM units; Sub-stations get 2 SAAR, 1 ROTEM; Airbases get 4 AIR_TRACTOR aircraft).
+    """
     stations_data = [
         # --- Dan District ---
         {"name": "Bnei Brak (Regional)", "district": "Dan", "lat": 32.090961, "lon": 34.839404},
@@ -121,22 +131,26 @@ def seed_real_israel_stations():
         {"name": "Nof HaGalil (Regional)", "district": "North", "lat": 32.729117, "lon": 35.337941},
         {"name": "Migdal HaEmek", "district": "North", "lat": 32.673084, "lon": 35.251715},
         {"name": "Tziporit", "district": "North", "lat": 32.765686, "lon": 35.315008},
-        
+
         # --- Airbases ---
-        {"name": "Megiddo Airbase - Elad Squadron", "district": "North", "type": "AIRBASE", "lat": 32.5975, "lon": 35.2289},
-        {"name": "Kedma Airbase - Elad Squadron", "district": "South", "type": "AIRBASE", "lat": 31.6315, "lon": 34.7942}
-]
+        {"name": "Megiddo Airbase - Elad Squadron", "district": "North", "type": "AIRBASE", "lat": 32.5975,
+         "lon": 35.2289},
+        {"name": "Kedma Airbase - Elad Squadron", "district": "South", "type": "AIRBASE", "lat": 31.6315,
+         "lon": 34.7942}
+    ]
 
     print("🚀 Starting Seeding of stations and resources...")
     total_resources = 0
 
+    # Iterate through each station data entry and create station records
     for s_data in stations_data:
+        # Determine station type from explicit type field or infer from station name
         if "type" in s_data:
             st_type = s_data["type"]
         else:
-            # Updated to look for English string
             st_type = "REGIONAL" if "(Regional)" in s_data["name"] else "SUB_STATION"
 
+        # Create station instance with geographic coordinates and metadata
         station = Station(
             name=s_data["name"],
             district=s_data["district"],
@@ -147,14 +161,19 @@ def seed_real_israel_stations():
         db.session.add(station)
         db.session.flush()
 
+        # Allocate resources based on station type
         resources_to_add = []
         if st_type == "REGIONAL":
+            # Regional stations receive full complement of ground units
             resources_to_add = (['SAAR'] * 4) + (['ESHED'] * 2) + (['ROTEM'] * 2)
         elif st_type == "SUB_STATION":
+            # Sub-stations receive reduced ground units
             resources_to_add = (['SAAR'] * 2) + (['ROTEM'] * 1)
         elif st_type == "AIRBASE":
+            # Airbases receive aerial firefighting aircraft
             resources_to_add = ['AIR_TRACTOR'] * 4
 
+        # Create resource entries for each allocated unit
         for res_type in resources_to_add:
             resource = Resource(
                 station_id=station.id,
@@ -168,6 +187,7 @@ def seed_real_israel_stations():
 
         print(f"✅ Created {station.name} ({st_type}) with {len(resources_to_add)} resources.")
 
+    # Commit all station and resource records to the database
     db.session.commit()
     print(
         f"\n🎉 Done! Created {len(stations_data)} stations/airbases with a total of {total_resources} resources in Neon DB!")

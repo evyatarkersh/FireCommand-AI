@@ -1,14 +1,15 @@
-import pytest
+from datetime import datetime, timedelta
+
 from app.agents.monitor_agent import MonitorAgent
+from app.models.fire_events import FireEvent
+from app.extensions import db
 
 
 class MockFireIncident:
-    """
-    חיקוי (Mock) פשוט ומהיר לרשומה גולמית של נאסא.
-    מונע מאיתנו את הצורך לגעת בטבלאות ה-DB האמיתיות במהלך בדיקת היחידה.
-    """
+    """Mock object for a raw NASA fire detection record, used to simulate fire incidents without requiring database interaction during unit tests."""
 
     def __init__(self, id, lat, lon, brightness, frp):
+        """Initialize a mock fire incident with basic detection parameters including id, coordinates (lat, lon), brightness, and fire radiative power (frp)."""
         self.id = id
         self.latitude = lat
         self.longitude = lon
@@ -21,92 +22,76 @@ class MockFireIncident:
 
 
 def test_monitor_clustering_logic():
-    """
-    בדיקת אלגוריתם איחוד השריפות (Clustering)
-    מוודא ששתי נקודות קרובות מתאחדות, שהמרכז הגיאוגרפי מחושב מחדש,
-    ושסטטיסטיקת העוצמה (FRP) לוקחת את המקסימום כפי שהוגדר בקוד.
-    """
+    """Tests the fire clustering algorithm by verifying that nearby points are merged correctly, the geographic center is recalculated based on bounding box, and the FRP intensity takes the maximum value rather than summing."""
     monitor = MonitorAgent()
 
-    # מאתחלים את קאש הזיכרון להיות ריק (כמו שהוא יהיה בתחילת ריצה על DB ריק)
+    # Initialize the memory cache to be empty as it would be at the start of a run on an empty database
     monitor.active_events_cache = []
 
-    # 1. נייצר 3 תצפיות "נאסא" (2 קרובות בירושלים, 1 רחוקה בחיפה)
-    # המרחק בין התצפיות בירושלים הוא בערך 1 ק"מ (הרבה מתחת לסף ה-2.5)
+    # Create 3 NASA observations: 2 close together in Jerusalem (~1 km apart, well below 2.5 km threshold), 1 far away in Haifa
     read1 = MockFireIncident(id=1, lat=31.768, lon=35.213, brightness=310.0, frp=25.0)
     read2 = MockFireIncident(id=2, lat=31.775, lon=35.220, brightness=315.0, frp=30.0)
 
-    # חיפה - רחוקה מאוד
+    # Haifa observation is very far away from Jerusalem
     read3 = MockFireIncident(id=3, lat=32.794, lon=34.989, brightness=305.0, frp=20.0)
 
     raw_reads = [read1, read2, read3]
 
-    # 2. נריץ את לולאת הלוגיקה המרכזית שלך (ללא השמירה ל-DB)
+    # Run the core clustering logic loop without saving to database
     for read in raw_reads:
         matched_event = monitor._find_matching_event_in_memory(read)
 
         if matched_event:
-            # מצאנו אירוע קרוב -> האלגוריתם שלך מעדכן ומרחיב אותו
+            # Found a nearby event, update and expand it
             monitor._update_existing_event(matched_event, read)
         else:
-            # לא מצאנו -> יצירת חדש והוספה לקאש
+            # No match found, create new event and add to cache
             new_event = monitor._create_new_event(read)
             monitor.active_events_cache.append(new_event)
 
-    # 3. מבחני התוצאה (Assertions)
+    # Verify that only 2 events were created (Jerusalem points merged into one)
+    assert len(monitor.active_events_cache) == 2, "Algorithm did not merge nearby points and created too many events!"
 
-    # בדיקה א': כמות האירועים
-    assert len(monitor.active_events_cache) == 2, "האלגוריתם לא איחד את הנקודות הקרובות ויצר יותר מדי אירועים!"
-
-    # נשלוף את האירוע המאוחד (ירושלים היא הדרומית מבין השתיים)
+    # Extract the merged event (Jerusalem is the southern one of the two)
     jerusalem_event = next(e for e in monitor.active_events_cache if e.latitude < 32.0)
     haifa_event = next(e for e in monitor.active_events_cache if e.latitude > 32.0)
 
-    # בדיקה ב': לוגיקת האיחוד (Update Logic)
-    assert jerusalem_event.num_points == 2, "מונה הנקודות לא התעדכן בתוך האירוע המאוחד!"
-    assert jerusalem_event.frp == 30.0, "ה-FRP של אירוע מאוחד צריך להיות הגבוה מבין השניים (30.0) ולא הסכום!"
+    # Verify merge logic: point counter should be 2 and FRP should be the maximum value
+    assert jerusalem_event.num_points == 2, "Point counter was not updated within the merged event!"
+    assert jerusalem_event.frp == 30.0, "FRP of merged event should be the highest of the two (30.0) and not the sum!"
 
-    # בדיקה ג': חישוב מחדש של המרכז הגיאוגרפי (Bounding Box center)
+    # Verify recalculation of geographic center based on bounding box
     expected_lat_center = (31.768 + 31.775) / 2
     expected_lon_center = (35.213 + 35.220) / 2
-    assert jerusalem_event.latitude == expected_lat_center, "קו הרוחב המרכזי לא חושב כממוצע הגבולות!"
-    assert jerusalem_event.longitude == expected_lon_center, "קו האורך המרכזי לא חושב כממוצע הגבולות!"
+    assert jerusalem_event.latitude == expected_lat_center, "Central latitude was not calculated as the average of the bounds!"
+    assert jerusalem_event.longitude == expected_lon_center, "Central longitude was not calculated as the average of the bounds!"
 
-    # בדיקה ד': האירוע המבודד נשאר שלם
+    # Verify the isolated Haifa event remains intact
     assert haifa_event.num_points == 1
     assert haifa_event.frp == 20.0
 
 
-from datetime import datetime, timedelta
-from app.models.fire_events import FireEvent
-from app.extensions import db
-
-
 def test_monitor_timeout_logic(app):
-    """
-    מבחן שריפות רפאים (Timeout):
-    מוודא שה-Monitor Agent מתעלם משריפות ישנות (מעל 24 שעות)
-    ופותח אירוע חדש במקום לאחד נקודות חדשות אל תוך אירוע היסטורי.
-    """
-    # 1. יצירת שני אירועים היסטוריים ב-DB המזויף שלנו
+    """Tests that the Monitor Agent correctly filters out old fires (over 24 hours) and only loads active events into memory, ensuring new detections create separate events instead of merging with expired historical events."""
+    # Create two historical events in the mock database
     with app.app_context():
         now = datetime.utcnow()
 
-        # אירוע טרי (מלפני שעתיים) - פעיל!
+        # Fresh event from two hours ago (should be loaded as active)
         fresh_event = FireEvent(
             id=101, latitude=32.0, longitude=35.0,
             min_lat=32.0, max_lat=32.0, min_lon=35.0, max_lon=35.0,
             detected_at=now - timedelta(hours=2),
-            last_update=now - timedelta(hours=2),  # <--- עודכן לפני שעתיים
+            last_update=now - timedelta(hours=2),
             num_points=1
         )
 
-        # אירוע ישן (מלפני יומיים) - סגור!
+        # Old event from two days ago (should be filtered out as expired)
         old_event = FireEvent(
             id=102, latitude=31.0, longitude=34.0,
             min_lat=31.0, max_lat=31.0, min_lon=34.0, max_lon=34.0,
             detected_at=now - timedelta(hours=48),
-            last_update=now - timedelta(hours=48),  # <--- פג תוקף!
+            last_update=now - timedelta(hours=48),
             num_points=5
         )
 
@@ -114,69 +99,60 @@ def test_monitor_timeout_logic(app):
         db.session.add(old_event)
         db.session.commit()
 
-        # 2. נפעיל את תהליך הטעינה של סוכן הניטור
+        # Trigger the monitor agent's loading process
         monitor = MonitorAgent()
 
-        # אנחנו מדמים את החלק הראשון של פונקציית run_cycle
+        # Simulate the first part of the run_cycle function by filtering based on timeout
         cutoff = datetime.utcnow() - timedelta(hours=monitor.EVENT_TIMEOUT_HOURS)
         monitor.active_events_cache = FireEvent.query.filter(FireEvent.last_update >= cutoff).all()
 
-        # 3. מבחני התוצאה (Assertions)
+        # Verify only the fresh event was loaded into memory
         cached_ids = [event.id for event in monitor.active_events_cache]
 
-        # מוודאים שרק האירוע הטרי נטען לזיכרון
-        assert 101 in cached_ids, "האירוע הטרי לא נטען לזיכרון!"
-        assert 102 not in cached_ids, "סכנה: ה-Monitor טען אירוע מלפני יומיים! עלול לגרום להקפצת שווא."
-        assert len(monitor.active_events_cache) == 1, "נטענו יותר מדי אירועים לזיכרון."
+        assert 101 in cached_ids, "The fresh event was not loaded into memory!"
+        assert 102 not in cached_ids, "Danger: Monitor loaded an event from two days ago! Could cause false positives."
+        assert len(monitor.active_events_cache) == 1, "Too many events loaded into memory."
 
 
 def test_bounding_box_expansion_logic():
-    """
-    בדיקת יחידה מתמטית: התרחבות גבולות הגזרה של שריפה (Bounding Box).
-    מוודא שכאשר מגיעות תצפיות חדשות בקצוות שונים, הקופסה הווירטואלית גדלה
-    והמרכז (Center) מחושב מחדש בצורה הנדסית ומדויקת.
-    """
+    """Tests the mathematical correctness of fire sector bounding box expansion by verifying that new observations from different edges correctly expand the virtual box and the center coordinates are recalculated accurately based on the expanded boundaries."""
     monitor = MonitorAgent()
 
-    # 1. נייצר אירוע בסיסי (נקודה אחת במרכז אידיאלי)
+    # Create a base event with a single point at an ideal center
     base_read = MockFireIncident(id=1, lat=32.0, lon=35.0, brightness=300, frp=20)
     event = monitor._create_new_event(base_read)
 
-    # נוודא שהקופסה ההתחלתית היא נקודתית בלבד
+    # Verify that the initial bounding box is only a single point
     assert event.min_lat == 32.0 and event.max_lat == 32.0
     assert event.min_lon == 35.0 and event.max_lon == 35.0
 
-    # 2. כעת "נפציץ" את השריפה מ-4 כיוונים שונים כדי להרחיב את הגזרה
+    # Add observations from all four directions to expand the sector
 
-    # תצפית צפונית
+    # Northern observation
     north_read = MockFireIncident(id=2, lat=32.1, lon=35.0, brightness=300, frp=20)
     monitor._update_existing_event(event, north_read)
 
-    # תצפית דרומית
+    # Southern observation
     south_read = MockFireIncident(id=3, lat=31.9, lon=35.0, brightness=300, frp=20)
     monitor._update_existing_event(event, south_read)
 
-    # תצפית מזרחית
+    # Eastern observation
     east_read = MockFireIncident(id=4, lat=32.0, lon=35.1, brightness=300, frp=20)
     monitor._update_existing_event(event, east_read)
 
-    # תצפית מערבית
+    # Western observation
     west_read = MockFireIncident(id=5, lat=32.0, lon=34.9, brightness=300, frp=20)
     monitor._update_existing_event(event, west_read)
 
-    # === מבחני התוצאה (Assertions) ===
+    # Verify that all bounding box limits expanded correctly
+    assert event.max_lat == 32.1, "Northern boundary did not expand!"
+    assert event.min_lat == 31.9, "Southern boundary did not expand!"
+    assert event.max_lon == 35.1, "Eastern boundary did not expand!"
+    assert event.min_lon == 34.9, "Western boundary did not expand!"
 
-    # 3. בדיקת גבולות הקופסה (Bounding Box)
-    assert event.max_lat == 32.1, "הגבול הצפוני לא התרחב!"
-    assert event.min_lat == 31.9, "הגבול הדרומי לא התרחב!"
-    assert event.max_lon == 35.1, "הגבול המזרחי לא התרחב!"
-    assert event.min_lon == 34.9, "הגבול המערבי לא התרחב!"
+    # Verify center calculation returns to original point after symmetric expansion
+    assert event.latitude == 32.0, "Error in calculating central latitude!"
+    assert event.longitude == 35.0, "Error in calculating central longitude!"
 
-    # 4. בדיקת המרכז (Center)
-    # מאחר והרחבנו את השריפה באופן סימטרי בדיוק לכל הכיוונים,
-    # הממוצע (המרכז) חייב לחזור לאותה נקודת ההתחלה!
-    assert event.latitude == 32.0, "שגיאה בחישוב קו הרוחב המרכזי!"
-    assert event.longitude == 35.0, "שגיאה בחישוב קו האורך המרכזי!"
-
-    # 5. בדיקת מונים
-    assert event.num_points == 5, "מונה הנקודות לא צבר את התצפיות נכון"
+    # Verify point counter accumulated all observations
+    assert event.num_points == 5, "Point counter did not accumulate observations correctly"

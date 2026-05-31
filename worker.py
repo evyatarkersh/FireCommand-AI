@@ -1,19 +1,20 @@
 import time
+
 from dotenv import load_dotenv
 
 load_dotenv()
 
 from app import create_app
-from app.api.routes import run_full_system_sync  # ודא שזה הנתיב הנכון!
+from app.api.routes import run_full_system_sync  # Ensure this is the correct path!
 
-# מקימים את האפליקציה כדי שה-Worker יכיר את מסד הנתונים
+# Initialize the application so the Worker can access the database
 app = create_app()
 
 
 def start_worker():
     print("🤖 Background Worker Started!")
 
-    # הלולאה הנצחית של ה-Worker
+    # The Worker's infinite loop
     while True:
         with app.app_context():
             print("\n🚀 Starting sync cycle...")
@@ -28,6 +29,6 @@ def start_worker():
 
 
 if __name__ == "__main__":
-    # השהיה קלה בהתחלה כדי לתת לשרת ה-Web לעלות קודם
+    # Small delay at startup to allow the Web server to start first
     time.sleep(10)
     start_worker()
