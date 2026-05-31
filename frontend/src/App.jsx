@@ -10,13 +10,14 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
 /**
- * Extracts and parses JSON content from a string that may contain markdown code blocks or escaped characters.
- * Takes a string input that might be wrapped in ```json``` blocks and returns the parsed JSON object, or null if parsing fails.
+ * Extracts and parses JSON content from a string that may contain markdown code blocks or escaped characters. Takes a string input that might be wrapped in ```json``` blocks and returns the parsed JSON object, or null if parsing fails.
  */
 const extractJSON = (str) => {
   if (typeof str !== 'string') return str;
   try {
+    // Remove markdown JSON code block delimiters
     let cleanStr = str.replace(/```json/gi, '').replace(/```/gi, '').trim();
+    // Normalize escaped newline characters
     cleanStr = cleanStr.replace(/\\n/g, '\\n');
     return JSON.parse(cleanStr);
   } catch (e) {
@@ -25,14 +26,13 @@ const extractJSON = (str) => {
 };
 
 /**
- * Processes raw district summaries from the backend by cleaning and extracting nested JSON structures.
- * Takes an object of district summaries, attempts to parse any JSON-stringified values, and returns a cleaned object with only the district_overview text.
+ * Processes raw district summaries from the backend by cleaning and extracting nested JSON structures. Takes an object of district summaries, attempts to parse any JSON-stringified values, and returns a cleaned object with only the district_overview text.
  */
 const processDistrictSummaries = (rawSummaries) => {
   const cleanSummaries = {};
   for (const [district, summary] of Object.entries(rawSummaries)) {
     let finalSummary = summary;
-    // If summary is a JSON string, attempt to extract the district_overview field
+    // Attempt to extract the district_overview field if the summary is a JSON string
     if (typeof summary === 'string' && summary.trim().startsWith('{')) {
       const parsed = extractJSON(summary);
       if (parsed && parsed.district_overview) {
@@ -45,8 +45,7 @@ const processDistrictSummaries = (rawSummaries) => {
 };
 
 /**
- * Main application component that renders a real-time fire monitoring dashboard with an interactive map and live feed sidebar.
- * Manages state for fire events, district summaries, fire stations, and map view, while establishing WebSocket connections for real-time updates.
+ * Main application component that renders a real-time fire monitoring dashboard with an interactive map and live feed sidebar. Manages state for fire events, district summaries, fire stations, and map view, while establishing WebSocket connections for real-time updates.
  */
 function App() {
   const [viewState, setViewState] = useState({
@@ -161,8 +160,7 @@ function App() {
   }, []);
 
   /**
-   * Handles click events on fire event cards in the sidebar.
-   * Focuses the clicked fire and animates the map to zoom to its location.
+   * Handles click events on fire event cards in the sidebar. Focuses the clicked fire and animates the map to zoom to its location.
    */
   const handleCardClick = (fire) => {
     setFocusedFireId(fire.event_id);
@@ -176,8 +174,7 @@ function App() {
   };
 
   /**
-   * Handles click events on fire markers on the map.
-   * Prevents event propagation, focuses the fire, zooms to its location, and scrolls the corresponding card into view.
+   * Handles click events on fire markers on the map. Prevents event propagation, focuses the fire, zooms to its location, and scrolls the corresponding card into view.
    */
   const handleMarkerClick = (e, fire) => {
     e.originalEvent.stopPropagation();
@@ -198,8 +195,7 @@ function App() {
   };
 
   /**
-   * Handles the map load event by loading and registering the custom fire station icon image.
-   * Once the image is successfully loaded and added to the map, sets the iconLoaded state to true to enable rendering of station layers.
+   * Handles the map load event by loading and registering the custom fire station icon image. Once the image is successfully loaded and added to the map, sets the iconLoaded state to true to enable rendering of station layers.
    */
   const onMapLoad = (evt) => {
     const map = evt.target;
@@ -216,14 +212,17 @@ function App() {
     });
   };
 
+  /**
+   * Resets the database and clears all active fire events from the system. Prompts the user for confirmation before proceeding, sends a POST request to the backend reset endpoint, and updates the UI state to reflect the cleared data.
+   */
   const handleResetDatabase = async () => {
-    // חלון אישור קופץ כדי שלא תלחץ בטעות באמצע המצגת
+    // Confirmation dialog to prevent accidental resets during presentations
     if (!window.confirm("🚨 Are you sure you want to reset the system and delete all data?")) {
       return;
     }
 
     try {
-      // פנייה לראוט החדש שיצרנו בשרת
+      // Send request to the backend reset route
       const response = await fetch(`${BACKEND_URL}/api/debug/reset`, {
         method: 'POST',
         headers: {
@@ -236,47 +235,49 @@ function App() {
       if (response.ok) {
         console.log("🔄 Database initialized successfully:", data.message);
         
-        setFires([]); // מרוקן מיד את רשימת השריפות מהמסך ללא צורך ברענון!
-        setFocusedFireId(null); // מאפס את הפוקוס במפה
-        
-        alert("המערכת אותחלה בהצלחה! כל השריפות נמחקו והתחנות נטענו מחדש.");
+        // Clear the fire list from the screen immediately without requiring a refresh
+        setFires([]);
+        // Reset the focused fire on the map
+        setFocusedFireId(null);
+
+        alert("System successfully reset! All fires have been deleted and stations reloaded.");
       } else {
-        alert(`שגיאה באיפוס המערכת: ${data.message || 'שגיאה לא ידועה'}`);
+        alert(`Error resetting system: ${data.message || 'Unknown error'}`);
       }
     } catch (error) {
       console.error("Error connecting to reset endpoint:", error);
-      alert("שגיאה בתקשורת עם השרת - ודא ששרת ה-Flask רץ");
+      alert("Error communicating with the server - ensure Flask server is running");
     }
   };
 
   return (
     <div style={{ display: 'flex', width: '100vw', height: '100vh', direction: 'ltr', backgroundColor: '#000' }}>
       <div className="sidebar-container">
-        {/* כותרת ה-Live Feed המקורית והנקייה - ללא פלקסבוקס שיזיז את הטקסט */}
-        <div style={{ 
+        {/* Live Feed header - clean and simple, without flexbox that could shift the text */}
+        <div style={{
           padding: '20px', 
           borderBottom: '1px solid #333', 
           background: '#1a1a1a', 
-          position: 'relative' // קריטי כדי שהכפתור יתמקד לפי הריבוע הזה
+          position: 'relative' // Critical for the button to position relative to this container
         }}>
           <h2 style={{ color: '#e3eeea', margin: 0, fontSize: '1.4rem', direction: 'ltr' }}>
             📡 Live Feed
           </h2>
           
-          {/* כפתור איפוס צף - ממוקם אבסולוטית בפינה הימנית ללא שום קשר לכותרת */}
+          {/* Floating reset button - positioned absolutely in the right corner, independent of the title */}
           <button
             onClick={handleResetDatabase}
-            title="איפוס סימולציה ומחיקת נתונים"
+            title="Reset simulation and delete data"
             style={{
               position: 'absolute',
               right: '20px', 
               top: '50%', 
               transform: 'translateY(-50%)', 
-              background: '#27272a', // רקע כהה שמפריד אותו מהכותרת
-              color: '#e4e4e7', // טקסט בהיר וקריא
-              border: '1px solid #3f3f46', // מסגרת עדינה
-              borderRadius: '6px', // פינות מעוגלות מודרניות
-              padding: '6px 12px', // הגדלנו מעט את ה-Padding שיהיה שטח לחיצה נוח
+              background: '#27272a', // Dark background that separates it from the title
+              color: '#e4e4e7', // Bright and readable text
+              border: '1px solid #3f3f46', // Subtle border
+              borderRadius: '6px', // Modern rounded corners
+              padding: '6px 12px', // Slightly increased padding for comfortable click area
               fontSize: '0.75rem',
               fontWeight: 'bold',
               letterSpacing: '0.5px',
@@ -284,16 +285,16 @@ function App() {
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.3)', // צל קליל שיוצר עומק ותחושת לחיצות
+              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.3)', // Light shadow creating depth and tactile feel
               transition: 'all 0.15s ease',
             }}
             onMouseEnter={(e) => { 
-              e.currentTarget.style.background = '#dc2626'; // נצבע באדום ברור ב-Hover
+              e.currentTarget.style.background = '#dc2626'; // Highlight in clear red on hover
               e.currentTarget.style.borderColor = '#b91c1c';
               e.currentTarget.style.color = '#fff';
             }}
             onMouseLeave={(e) => { 
-              e.currentTarget.style.background = '#27272a'; // חוזר למצב רגיל
+              e.currentTarget.style.background = '#27272a'; // Return to normal state
               e.currentTarget.style.borderColor = '#3f3f46';
               e.currentTarget.style.color = '#e4e4e7';
             }}
@@ -397,7 +398,7 @@ function App() {
                   </span>
                 </div>
 
-                {/* שורת תגיות (Badges) - צבעים לפי רמת סיכון וסוג שטח */}
+                {/* Risk and terrain type badge row - colors based on risk level and terrain type */}
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px', direction: 'ltr' }}>
                   <span style={{
                     background: fire.risk === 'CRITICAL' ? '#dc2626' : fire.risk === 'HIGH' ? '#ea580c' : '#ca8a04',
@@ -414,7 +415,7 @@ function App() {
 
                 
 
-                {/* --- קופסת החיזוי (Forecast) המעודכנת --- */}
+                {/* Updated forecast box */}
                 {fire.prediction_summary && (
                   <div style={{ 
                     marginTop: '12px', 
