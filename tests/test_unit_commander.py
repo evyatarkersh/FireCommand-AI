@@ -1,48 +1,50 @@
-import pytest
 from app.agents.commander_agent import CommanderAgent
 
 
 def test_calculate_distance():
     """
-    בדיקת יחידה: פונקציית חישוב מרחק בקו אווירי (Haversine)
+    Tests the Haversine distance calculation function by verifying zero distance for identical points and sanity-checking the Tel Aviv to Jerusalem distance (approximately 54 km).
     """
     commander = CommanderAgent()
 
-    # 1. בדיקת אפס: מרחק בין נקודה לעצמה חייב להיות 0
+    # Zero test: distance between a point and itself must be 0
     dist_zero = commander._calculate_distance(32.0, 34.0, 32.0, 34.0)
     assert dist_zero == 0.0
 
-    # 2. בדיקת שפיות: מרחק מתל אביב (32.08, 34.78) לירושלים (31.76, 35.21)
-    # המרחק האמיתי בקו אווירי הוא בערך 54 ק"מ. נוודא שהוא בטווח הגיוני (50-60).
+    # Sanity check: distance from Tel Aviv (32.08, 34.78) to Jerusalem (31.76, 35.21)
+    # The actual straight-line distance is approximately 54 km, verify it's in a reasonable range (50-60)
     dist_ta_jer = commander._calculate_distance(32.0853, 34.7818, 31.7683, 35.2137)
     assert 50.0 < dist_ta_jer < 60.0
 
 
 def test_calculate_sdi_factor():
     """
-    בדיקת יחידה: פונקציית חישוב קנס העבירות בשטח (SDI)
-    מוודא שהפונקציה מחזירה את המקדמים המדויקים לפי מטריצת העבירות שמוגדרת בקוד.
+    Tests the terrain traversability penalty (SDI) calculation function by verifying that it returns the correct coefficients according to the traversability matrix for various resource types, terrain types, and slope conditions.
     """
     commander = CommanderAgent()
 
-    # 1. Fallback (GRASS או כל מה שאינו יער/אורבני) - מצפים ל-1.0 לכולם
+    # Fallback terrain (GRASS or anything that is not forest/urban) should return 1.0 for all resources
     sdi_grass = commander._calculate_sdi_factor(resource_type="SAAR", terrain="GRASS", slope=0.0)
     assert sdi_grass == 1.0
 
-    # 2. יער (FOREST) במצב רגיל (slope <= 15)
+    # Forest (FOREST) in normal conditions (slope <= 15)
     assert commander._calculate_sdi_factor("ROTEM", "FOREST", 10.0) == 1.0
     assert commander._calculate_sdi_factor("SAAR", "FOREST", 10.0) == 0.4
     assert commander._calculate_sdi_factor("ESHED", "FOREST", 10.0) == 0.5
 
-    # 3. יער (FOREST) תלול (slope > 15)
+    # Steep forest (FOREST) (slope > 15)
     assert commander._calculate_sdi_factor("ROTEM", "FOREST", 20.0) == 0.7
-    assert commander._calculate_sdi_factor("SAAR", "FOREST", 20.0) == 0.0  # סער לא עביר בשיפוע חד ביער
+    # SAAR is not traversable on steep slope in forest
+    assert commander._calculate_sdi_factor("SAAR", "FOREST", 20.0) == 0.0
     assert commander._calculate_sdi_factor("AIR_TRACTOR", "FOREST", 20.0) == 0.9
 
-    # 4. שטח בנוי (URBAN)
-    assert commander._calculate_sdi_factor("SAAR", "URBAN", 0.0) == 1.0  # סער מצוין בעיר
-    assert commander._calculate_sdi_factor("ROTEM", "URBAN", 0.0) == 0.5  # רותם מגושם בעיר
-    assert commander._calculate_sdi_factor("AIR_TRACTOR", "URBAN", 0.0) == 0.0  # אי אפשר להטיל מים בתוך עיר
+    # Urban area (URBAN)
+    # SAAR is excellent in urban areas
+    assert commander._calculate_sdi_factor("SAAR", "URBAN", 0.0) == 1.0
+    # ROTEM is bulky in urban areas
+    assert commander._calculate_sdi_factor("ROTEM", "URBAN", 0.0) == 0.5
+    # Cannot drop water inside urban areas
+    assert commander._calculate_sdi_factor("AIR_TRACTOR", "URBAN", 0.0) == 0.0
 
 
 from unittest.mock import MagicMock
@@ -50,49 +52,52 @@ from unittest.mock import MagicMock
 
 def test_get_actual_yield():
     """
-    בדיקת יחידה: חישוב תפוקה בפועל (get_actual_yield)
-    מוודא שהפונקציה מכפילה נכון את קצב הייצור הבסיסי בפקטור ה-SDI,
-    ומטפלת נכון במקרי קצה (כמו שיפוע שחסר במסד הנתונים).
+    Tests the actual yield calculation (get_actual_yield) by verifying that the function correctly multiplies the base production rate by the SDI factor and handles edge cases such as missing slope data in the database.
     """
     commander = CommanderAgent()
 
-    # 1. עיקור תלויות (Mocking):
-    # נקבע קצבי ייצור קבועים לטסט כדי שהוא יהיה דטרמיניסטי לעד
+    # Set fixed production rates for the test to make it deterministic
     commander.BASE_PRODUCTION_RATES = {
         "ROTEM": 400.0,
         "SAAR": 300.0
     }
 
-    # ננטרל את הפונקציה שמתרגמת דלק לשטח (נניח שהיא פשוט מחזירה את מה שקיבלה)
+    # Neutralize the function that translates fuel to terrain (assume it simply returns what it receives)
     commander._determine_terrain = MagicMock(side_effect=lambda fuel: fuel)
 
-    # נייצר מחלקה מזויפת וקלילה שתחקה את התנהגות מודל ה-FireEvent
+    # Create a lightweight mock class that simulates the behavior of the FireEvent model
     class MockEvent:
+        """
+        Lightweight mock class that simulates the FireEvent model with fuel_type and topo_slope attributes for testing purposes.
+        """
         def __init__(self, fuel_type, topo_slope):
             self.fuel_type = fuel_type
             self.topo_slope = topo_slope
 
-    # === מבחני התוצאה ===
-
-    # תרחיש 1: שטח פתוח (GRASS), ללא שיפוע. (SDI צפוי: 1.0)
-    # SAAR אמור להפיק: 300 * 1.0 = 300
+    # Scenario 1: Open area (GRASS), no slope (expected SDI: 1.0)
+    # SAAR should produce: 300 * 1.0 = 300
     grass_event = MockEvent(fuel_type="GRASS", topo_slope=0.0)
     assert commander.get_actual_yield("SAAR", grass_event) == 300.0
 
-    # תרחיש 2: יער לא תלול (FOREST, שיפוע 10).
-    # לפי הקוד שלך: SDI רותם=1.0, SDI סער=0.4
+    # Scenario 2: Non-steep forest (FOREST, slope 10)
+    # SDI ROTEM=1.0, SDI SAAR=0.4
     forest_flat_event = MockEvent(fuel_type="FOREST", topo_slope=10.0)
-    assert commander.get_actual_yield("ROTEM", forest_flat_event) == 400.0  # 400 * 1.0
-    assert commander.get_actual_yield("SAAR", forest_flat_event) == 120.0  # 300 * 0.4
+    # 400 * 1.0
+    assert commander.get_actual_yield("ROTEM", forest_flat_event) == 400.0
+    # 300 * 0.4
+    assert commander.get_actual_yield("SAAR", forest_flat_event) == 120.0
 
-    # תרחיש 3: יער תלול (FOREST, שיפוע 20).
-    # לפי הקוד שלך: SDI רותם=0.7, SDI סער=0.0
+    # Scenario 3: Steep forest (FOREST, slope 20)
+    # SDI ROTEM=0.7, SDI SAAR=0.0
     forest_steep_event = MockEvent(fuel_type="FOREST", topo_slope=20.0)
-    assert commander.get_actual_yield("ROTEM", forest_steep_event) == 280.0  # 400 * 0.7
-    assert commander.get_actual_yield("SAAR", forest_steep_event) == 0.0  # 300 * 0.0
+    # 400 * 0.7
+    assert commander.get_actual_yield("ROTEM", forest_steep_event) == 280.0
+    # 300 * 0.0
+    assert commander.get_actual_yield("SAAR", forest_steep_event) == 0.0
 
-    # תרחיש 4: התמודדות עם מידע חסר במסד (None)
-    # הפונקציה אמורה להפוך את ה-None ל-0.0 שיפוע.
-    # בסביבה עירונית מקדם הרותם הוא 0.5.
+    # Scenario 4: Handling missing database information (None)
+    # The function should convert None to 0.0 slope
+    # In an urban environment, ROTEM's coefficient is 0.5
     urban_event_no_slope = MockEvent(fuel_type="URBAN", topo_slope=None)
-    assert commander.get_actual_yield("ROTEM", urban_event_no_slope) == 200.0  # 400 * 0.5
+    # 400 * 0.5
+    assert commander.get_actual_yield("ROTEM", urban_event_no_slope) == 200.0

@@ -2,18 +2,21 @@
 import React from 'react';
 import './TacticalFireMarker.css';
 
+/**
+ * A tactical fire marker component that displays an animated fire emoji with a pulsing radar effect. The component accepts an intensity prop (0-100) that dynamically scales the fire emoji size, with higher intensity values resulting in larger fire icons on the map.
+ */
 const TacticalFireMarker = ({ intensity = 100 }) => {
-  // חישוב גודל האימוג'י לפי העוצמה (ככל שהשריפה חזקה, האימוג'י גדול יותר)
-  const baseSize = 18; 
+  // Calculate emoji size based on intensity (higher intensity = larger emoji)
+  const baseSize = 18;
   const dynamicSize = Math.max(18, baseSize * (intensity / 100)); 
 
   return (
     <div className="fire-emoji-container">
-      {/* הטבעת הפועמת (המכ"ם) שמאחורי האש */}
+      {/* Pulsing ring (radar effect) behind the fire */}
       <div className="pulse-ring"></div>
       
-      {/* האימוג'י עצמו במרכז */}
-      <span 
+      {/* The emoji itself in the center */}
+      <span
         className="fire-emoji" 
         style={{ fontSize: `${dynamicSize}px` }}
       >

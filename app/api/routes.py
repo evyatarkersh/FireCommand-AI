@@ -1,77 +1,78 @@
 import datetime
 import os
+import random
+import time
+
 from flask import Blueprint, jsonify
-from app.extensions import db
 from sqlalchemy import text
-from app.agents.nasa_agent import NasaIngestionService
-from app.agents.open_weather_map_agent import WeatherService
 
-# --- ייבוא הסוכנים החדשים ---
-from app.agents.nasa_agent import NasaIngestionService
-from app.agents.open_weather_map_agent import WeatherService
 from app.agents.monitor_agent import MonitorAgent
-from app.agents.topo_agent import enrich_with_topography
-from app.agents.fuel_agent import enrich_with_fuel
-from app.agents.IMS_DATA_agent import enrich_with_ims
-import time, random
+from app.agents.nasa_agent import NasaIngestionService
+from app.agents.open_weather_map_agent import WeatherService
+from app.extensions import db
 
-# יצירת ה-Blueprint
+# Create the Blueprint
 api = Blueprint('api', __name__)
 
 
 @api.route('/')
 def home():
+    """Returns a simple status message confirming that the FireCommand AI server is running and operational."""
     return "FireCommand AI Server is Running (Modular Structure)!"
 
 
-# בדיקת קריאה (במקום SQL, משתמשים ב-db.session)
 @api.route('/test-db')
 def test_db():
+    """Tests database connectivity by executing a version query through the SQLAlchemy ORM and returns the database version string or an error message if the connection fails."""
     try:
-        # בדיקת גרסה מהירה באמצעות SQL נקי דרך ה-ORM
+        # Execute a version check query using raw SQL through ORM
         result = db.session.execute(text('SELECT version()'))
         version = result.fetchone()[0]
         return f"Read Success! Version: {version}"
     except Exception as e:
         return f"Connection Failed: {e}"
 
+
 @api.route('/test-nasa')
 def test_nasa():
-    # 1. יצירת המופע של הסרביס
+    """Tests the NASA fire ingestion service by fetching and saving fire data from the last 5 days, then returns the results as JSON including the count of new fires added."""
+    # Create service instance
     service = NasaIngestionService()
 
-    # 2. קריאה לפונקציה
+    # Fetch and save fires from the last 5 days
     fires_data = service.fetch_and_save_fires(days_back=5)
 
-    # 3. החזרת התוצאה למסך כ-JSON
+    # Return the result to screen as JSON
     return jsonify({
         "data": fires_data
     })
+
+
 @api.route('/test-owm')
 def test_owm():
-    # 1. יצירת המופע של הסרביס
+    """Tests the OpenWeatherMap service by updating weather data for fire event ID 1, returning success status if the event exists or an error if the update fails."""
+    # Create weather service instance
     service = WeatherService()
 
-    # 2. קריאה לפונקציה
+    # Update weather data for event ID 1
     success = service.update_weather_for_event(1)
 
-    # 3. החזרת תשובה לדפדפן כדי שנדע מה קרה
+    # Return response to browser indicating success or failure
     if success:
         return jsonify({"status": "success", "message": "Weather updated for Event #1"}), 200
     else:
         return jsonify({"status": "error", "message": "Failed. Does Event #1 exist in DB?"}), 400
-    
-    
 
 
 @api.route('/run-monitor', methods=['GET'])
 def run_monitor():
+    """Executes a complete monitoring cycle including fire clustering and weather enrichment, then returns the execution status and total time taken in seconds."""
     start_time = time.time()
     try:
-        # 1. יצירת הסוכן
+        # Create the monitor agent
         agent = MonitorAgent()
 
-        # 2. הרצת המחזור (Clustering + Weather Enrichment)
+        # Run the monitoring cycle (clustering and weather enrichment)
         agent.run_cycle()
 
         total_time = time.time() - start_time
@@ -93,11 +94,12 @@ def run_monitor():
 
 @api.route('/test-all', methods=['GET'])
 def ingest_and_monitor():
+    """Performs a complete system test by running NASA fire ingestion followed by the monitoring cycle, returning detailed results including fire counts and execution time."""
     start_time = time.time()
     results = {}
 
     try:
-        # 1. Run NASA ingestion first
+        # Run NASA ingestion first
         nasa_service = NasaIngestionService()
         fires_data = nasa_service.fetch_and_save_fires(days_back=5)
         results['nasa_ingestion'] = {
@@ -105,7 +107,7 @@ def ingest_and_monitor():
             "fires_count": fires_data.get("new_fires_added", 0)
         }
 
-        # 2. Run monitor cycle after NASA ingestion
+        # Run monitor cycle after NASA ingestion
         monitor_agent = MonitorAgent()
         monitor_agent.run_cycle()
         results['monitor_cycle'] = {
@@ -130,64 +132,70 @@ def ingest_and_monitor():
         }), 500
 
 
-from app.extensions import socketio # ייבוא בתחילת הקובץ
+from app.extensions import socketio
+
 
 @api.route('/trigger-fire')
 def trigger_fire():
-    # פונקציה לבדיקת עומס - יוצרת 5 שריפות אקראיות באזור ירושלים
+    """Creates 5 simulated fire events with random coordinates around the Jerusalem area for load testing purposes, emitting each event via WebSocket and returning the generated data."""
     fires = []
     for i in range(5):
+        # Generate random fire coordinates around Jerusalem
         fake_fire = {
             "event_id": 900 + i,
-            "lat": 31.7 + random.uniform(-0.1, 0.1), # הגרלה סביב ירושלים
+            "lat": 31.7 + random.uniform(-0.1, 0.1),
             "lon": 35.2 + random.uniform(-0.1, 0.1),
             "intensity": "High"
         }
         fires.append(fake_fire)
-        socketio.emit('new_fire', fake_fire) # משדר כל אחת
+        # Emit each fire event via WebSocket
+        socketio.emit('new_fire', fake_fire)
 
     return jsonify({"status": "5 Alerts sent!", "data": fires})
 
+
 @api.route('/active-fires', methods=['GET'])
 def get_active_fires():
+    """Retrieves all active fire events from the database along with the most recent command log summaries for each affected district, returning fires and summaries as a combined JSON response."""
     try:
         from app.models.fire_events import FireEvent
         from app.models.commander_logs import CommandLog
 
-        # 1. שליפת כל אירועי השריפה הפעילים והמרתם למילון
+        # Fetch all active fire events and convert them to dictionary
         active_fires = FireEvent.query.all()
         fires_list = [fire.to_dict() for fire in active_fires]
-        
-        # 2. **התיקון:** שולפים את המחוז מתוך המילון (f.get) ולא מהאובייקט
+
+        # Extract unique districts from fire events
         active_districts = set(f.get('district') for f in fires_list if f.get('district'))
-        
-        # 3. שליפת ההמלצה הכי עדכנית מיומן המבצעים לכל מחוז פעיל
+
+        # Fetch the most recent recommendation from command log for each active district
         summaries = {}
         for district in active_districts:
-            latest_log = CommandLog.query.filter_by(district_name=district)\
-                .order_by(CommandLog.timestamp.desc())\
+            latest_log = CommandLog.query.filter_by(district_name=district) \
+                .order_by(CommandLog.timestamp.desc()) \
                 .first()
             if latest_log:
                 summaries[district] = latest_log.llm_summary_text
-        
-        # 4. החזרת אובייקט משולב
+
+        # Return combined object
         return jsonify({
             "fires": fires_list,
             "summaries": summaries
         }), 200
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 def run_full_system_sync():
-    """הלוגיקה שאתה כבר כתבת, בתוך פונקציה שאפשר לקרוא לה מכל מקום"""
+    """Executes a complete system synchronization by running NASA fire ingestion followed by the monitor cycle, logging progress with process ID timestamps and returning results or error information."""
     current_pid = os.getpid()
     start_time = datetime.datetime.now()
     print(f"🔄 [PID {current_pid}] [SYNC START] {start_time.strftime('%H:%M:%S')} - Initializing full system update...")
     start_time = time.time()
     results = {}
     try:
-        # 1. NASA Ingestion
+        # Run NASA fire ingestion
         nasa_service = NasaIngestionService()
         fires_data = nasa_service.fetch_and_save_fires(days_back=5)
         results['nasa_ingestion'] = {
@@ -195,7 +203,7 @@ def run_full_system_sync():
             "fires_count": fires_data.get("new_fires_added", 0)
         }
 
-        # 2. Monitor Cycle
+        # Run monitor cycle
         print(f"🛑 [PID {current_pid}] Running Monitor Cycle..")
         monitor_agent = MonitorAgent()
         monitor_agent.run_cycle()
@@ -207,39 +215,38 @@ def run_full_system_sync():
         print(f"❌ [PID {current_pid}] Sync failed: {e}")
         return {"error": str(e)}
 
+
 @socketio.on('connect')
 def handle_connect():
+    """Handles WebSocket connection events from React clients, logging the connection with the current process ID."""
     print(f"🟢 [PID {os.getpid()}] React Client just connected to me!")
 
-# פונקציה שתקפוץ כשהלקוח סוגר את הדפדפן או מתנתק
+
 @socketio.on('disconnect')
 def handle_disconnect():
+    """Handles WebSocket disconnection events when clients close the browser or disconnect, logging the disconnection with the current process ID."""
     print(f"🟡 [PID {os.getpid()}] React Client disconnected.")
-    
 
-from flask import jsonify
+
 from app.models.resources import Station
-# ודא שיש לך @bp.route או @app.route בהתאם לאיך שהגדרת את הראוטים שלך
+
 
 @api.route('/stations', methods=['GET'])
 def get_stations():
-    """
-    שולף את כל תחנות הכיבוי מהדאטה-בייס
-    ומחזיר אותן בפורמט GeoJSON תקני עבור המפה בריאקט.
-    """
+    """Fetches all fire stations from the database and returns them in standard GeoJSON format with features containing point geometries and station properties for the React map."""
     stations = Station.query.all()
-    
+
     geojson = {
         "type": "FeatureCollection",
         "features": []
     }
-    
+
     for station in stations:
         feature = {
             "type": "Feature",
             "geometry": {
                 "type": "Point",
-                # חשוב מאוד: ב-GeoJSON הסדר הוא תמיד [קו אורך, קו רוחב]
+                # GeoJSON coordinate order is always [longitude, latitude]
                 "coordinates": [station.longitude, station.latitude]
             },
             "properties": {
@@ -250,15 +257,13 @@ def get_stations():
             }
         }
         geojson["features"].append(feature)
-        
+
     return jsonify(geojson)
+
 
 @api.route('/health', methods=['GET'])
 def health_check():
-    """
-    ראוט ייעודי עבור UptimeRobot כדי להשאיר את השרת ער.
-    מחזיר תשובה מהירה וקלה.
-    """
+    """Dedicated health check endpoint for UptimeRobot monitoring to keep the server awake, returning a simple alive status with the current timestamp logged."""
     current_time = datetime.datetime.now().strftime("%H:%M:%S")
     print(f"🩺 [{current_time}] [KEEP-ALIVE] UptimeRobot pinged /health")
     return {"status": "alive", "message": "FireCommand is awake!"}, 200

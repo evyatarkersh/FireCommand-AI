@@ -1,22 +1,31 @@
-import os
 import json
+import os
+
+import google.generativeai as genai
 from groq import Groq
 from groq.types.chat import ChatCompletionUserMessageParam
-import google.generativeai as genai
+
 
 class LLMAgent:
+    """
+    Manages Large Language Model API interactions with automatic failover between Groq and Gemini services for generating tactical fire management summaries and dispatch recommendations.
+    """
+
     def __init__(self):
-        # 1. טעינת כל מפתחות Groq הזמינים (גם הרגיל וגם הממוספרים)
+        """
+        Initializes the LLM Agent by loading multiple Groq API keys and configuring Gemini as a fallback, ensuring high availability for critical fire management operations.
+        """
+        # Load all available Groq API keys (both regular and numbered)
         self.groq_keys = [
             os.getenv("GROQ_API_KEY"),
             os.getenv("GROQ_API_KEY_1"),
             os.getenv("GROQ_API_KEY_2"),
             os.getenv("GROQ_API_KEY_3")
         ]
-        # מנקה ערכים ריקים מהרשימה
+        # Filter out empty values from the list
         self.groq_keys = [k for k in self.groq_keys if k]
 
-        # 2. אתחול Gemini (מודל הגיבוי הסופי והחזק של גוגל)
+        # Initialize Gemini (Google's final and powerful fallback model)
         self.gemini_key = os.getenv("GEMINI_API_KEY")
         if self.gemini_key:
             genai.configure(api_key=self.gemini_key)
@@ -30,10 +39,9 @@ class LLMAgent:
 
     def _call_llm_with_fallback(self, prompt, context_name="LLM", is_json=False):
         """
-        מנסה כל מפתח של Groq עם המודלים הכי חזקים. 
-        אם כולם נכשלים, עובר ל-Gemini.
+        Attempts to execute a prompt across multiple Groq API keys using high-capacity models, falling back to Gemini if all Groq attempts fail, and returns the generated text response or error message.
         """
-        # המודלים החזקים בלבד (לא יאבדו לך כבאיות)
+        # Only the strongest models for reliable tactical decisions
         groq_strong_models = [
             "llama-3.3-70b-versatile",
             "openai/gpt-oss-120b"
@@ -43,33 +51,33 @@ class LLMAgent:
         if is_json:
             kwargs["response_format"] = {"type": "json_object"}
 
-        # === שלב 1: מנסים את כל המפתחות והמודלים של Groq ===
+        # Step 1: Try all Groq API keys and models
         for key_index, api_key in enumerate(self.groq_keys):
             client = Groq(api_key=api_key)
-            
+
             for model_name in groq_strong_models:
                 try:
-                    print(f"      🔄 {context_name}: Trying Groq Key #{key_index+1} with model {model_name}...")
-                    
+                    print(f"      🔄 {context_name}: Trying Groq Key #{key_index + 1} with model {model_name}...")
+
                     chat_completion = client.chat.completions.create(
                         messages=[ChatCompletionUserMessageParam(role="user", content=prompt)],
                         model=model_name,
                         **kwargs
                     )
-                    
-                    print(f"      🟢 {context_name}: Success using Groq Key #{key_index+1} ({model_name})")
+
+                    print(f"      🟢 {context_name}: Success using Groq Key #{key_index + 1} ({model_name})")
                     return chat_completion.choices[0].message.content
 
                 except Exception as e:
-                    # אם נכשל, פשוט עוברים בשקט לאופציה הבאה
+                    # If failed, silently move to the next option
                     print(f"      ⚠️ {context_name}: Error with {model_name}: {e}")
                     continue
 
-        # === שלב 2: גיבוי של Gemini (אם Groq קרס לחלוטין) ===
+        # Step 2: Gemini fallback (if Groq completely failed)
         if self.gemini_model:
             try:
                 print(f"      🚨 {context_name}: Groq exhausted. Trying Gemini 1.5 Pro...")
-                
+
                 generation_config = {"temperature": 0.1}
                 if is_json:
                     generation_config["response_mime_type"] = "application/json"
@@ -83,13 +91,15 @@ class LLMAgent:
             except Exception as e:
                 print(f"      ❌ {context_name}: Gemini fallback failed: {e}")
 
-        # === שלב 3: הכל קרס ===
+        # Step 3: Everything failed
         error_text = f"⚠️ Error: LLM completely unavailable for {context_name}."
         print(error_text)
         return '{"error": "API Blocked"}' if is_json else error_text
-    
-    
+
     def summarize_predictions(self, predictions_data):
+        """
+        Converts raw fire prediction data into a structured, human-readable tactical forecast with threat assessment and key metrics in Markdown format, returning a summary string or error/status message.
+        """
         if not self.is_active:
             return "⚠️ LLM Agent is inactive."
 
@@ -127,13 +137,11 @@ class LLMAgent:
         YOUR OUTPUT:
         """
 
-        # שימוש במנגנון ה-Fallback החדש
         return self._call_llm_with_fallback(prompt, context_name="Prediction Summary")
 
     def summarize_dispatch(self, district_name, dispatch_data):
         """
-        מקבלת שם מחוז ואת ה-JSON של שיבוץ הכוחות (כולל שמות התחנות),
-        ומחזירה JSON מובנה עם סיכום מחוזי וסיכומים טקטיים לכל שריפה בפורמט Markdown.
+        Generates structured JSON output containing district-level resource allocation overview and individual tactical summaries for each fire event, formatted with Markdown text for presentation, or returns an error message if the agent is inactive or data is empty.
         """
         if not self.is_active:
             return '{"error": "LLM Agent is inactive."}'
@@ -181,8 +189,8 @@ class LLMAgent:
 
         YOUR JSON OUTPUT:
         """
-        
-        # שימוש במנגנון ה-Fallback מול Groq
+
+        # Use the fallback mechanism with Groq
         response_text = self._call_llm_with_fallback(prompt, context_name=f"Dispatch {district_name}", is_json=True)
-        
+
         return response_text

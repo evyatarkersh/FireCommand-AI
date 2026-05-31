@@ -1,20 +1,14 @@
-import pytest
+from app.agents.commander_agent import CommanderAgent
 from app.models.fire_events import FireEvent
 from app.models.resources import Resource
-from app.agents.commander_agent import CommanderAgent
 
 
 def test_overkill_prevention_triple_layer(app):
-    """
-    מבחן התותח והזבוב:
-    מוודא שהאלגוריתם בוחר כלי חלש ורחוק יותר (SAAR - 10 דקות)
-    על פני כלי חזק וקרוב יותר (ROTEM - 5 דקות) עבור שריפה קטנה,
-    כדי למזער את קנס ה'רזרבות' של פונקציית המטרה.
-    """
-    # 1. הקמת זירה פיקטיבית
+    """Tests that the optimization algorithm chooses a weaker but adequate resource (SAAR at 10 minutes) over a stronger closer resource (ROTEM at 5 minutes) for a small fire, thereby minimizing the reserves penalty in the objective function and preventing resource overkill."""
+    # Setup fictional scenario with commander agent
     commander = CommanderAgent()
 
-    # נייצר אובייקטים "מזויפים" (Mocks) כדי לא לערב את הדאטה-בייס האמיתי
+    # Create mock fire and resource objects to avoid involving the real database
     small_fire = FireEvent(id=1, demand_perimeter_m=80.0)
 
     saar_truck = Resource(id=101, resource_type='SAAR', status='AVAILABLE')
@@ -23,8 +17,8 @@ def test_overkill_prevention_triple_layer(app):
     unsolved_fires = [small_fire]
     math_survivors = [saar_truck, rotem_truck]
 
-    # 2. זיוף מטריצת ה-OSRM (כדי לא לעשות קריאות API אמיתיות בטסט)
-    # הרותם במרחק 5 דקות (0.083 שעות), הסער במרחק 10 דקות (0.166 שעות)
+    # Mock OSRM travel time matrix to avoid making real API calls in the test
+    # ROTEM is closer at 5 minutes, SAAR is farther at 10 minutes
     eta_matrix = {
         101: {1: 10.0 / 60.0},  # SAAR -> Fire 1
         102: {1: 5.0 / 60.0}  # ROTEM -> Fire 1
@@ -34,7 +28,7 @@ def test_overkill_prevention_triple_layer(app):
     allocated = set()
     llm_summary = {}
 
-    # 3. הפעלת מנוע ה-MILP בלבד (Step 4)
+    # Run MILP optimization engine only
     success = commander.step4_optimize_and_dispatch(
         unsolved_fires=unsolved_fires,
         math_survivors=math_survivors,
@@ -47,27 +41,22 @@ def test_overkill_prevention_triple_layer(app):
         district_name="Test_District"
     )
 
-    # 4. מבחני התוצאה (Assertions) - פה בודקים אם האלגוריתם עבר את המבחן
-    assert success is True, "האלגוריתם לא מצא פתרון למרות שיש היתכנות ודאית!"
+    # Verify that the algorithm found a solution
+    assert success is True, "Algorithm failed to find a solution despite guaranteed feasibility!"
 
-    # האם הוא בחר נכון? הוא היה אמור לבחור *רק* את הסער!
-    assert saar_truck.status == 'EN_ROUTE', "המערכת הייתה צריכה לשלוח את ה-SAAR החלש יותר!"
+    # Verify that the weaker SAAR was chosen correctly
+    assert saar_truck.status == 'EN_ROUTE', "System should have dispatched the weaker SAAR!"
     assert saar_truck.assigned_event_id == small_fire.id
 
-    # והכי חשוב: האם הוא שמר את הרותם כרזרבה?
-    assert rotem_truck.status == 'AVAILABLE', "כישלון! המערכת שלחה את ה-ROTEM היקר לשריפה קטנה למרות שיש SAAR!"
+    # Verify that ROTEM was kept in reserve instead of being dispatched to a small fire
+    assert rotem_truck.status == 'AVAILABLE', "Failure! System dispatched the expensive ROTEM to a small fire despite having SAAR available!"
 
 
 def test_swarm_prevention(app):
-    """
-    מבחן ריקון התחנות:
-    מוודא שהמערכת מעדיפה כלי אחד חזק (ROTEM) מרחוק,
-    על פני פיצול הכוח ושליחת 3 כלים חלשים (SAAR) מקרוב,
-    כדי לחסוך את קנס היציאה (10,000) על הפעלת כלים רבים.
-    """
+    """Tests that the system prefers dispatching one strong resource (ROTEM) from afar over deploying three weak resources (SAAR) from nearby, minimizing the deployment penalty for activating multiple resources and preventing station depletion."""
     commander = CommanderAgent()
 
-    # שריפה דורשת 250 מטר (ביער: רותם מפיק 320, סער מפיק 120. נדרשים 3 סערים או רותם 1)
+    # Fire requires 250 meters perimeter coverage (in forest: ROTEM produces 320m, SAAR produces 120m, so requires 3 SAARs or 1 ROTEM)
     medium_fire = FireEvent(id=2, demand_perimeter_m=250.0)
 
     rotem_far = Resource(id=201, resource_type='ROTEM', status='AVAILABLE')
@@ -77,7 +66,7 @@ def test_swarm_prevention(app):
 
     math_survivors = [rotem_far, saar_close_1, saar_close_2, saar_close_3]
 
-    # הרותם במרחק 25 דק', הסערים במרחק 5 דק'
+    # ROTEM is farther at 25 minutes, SAARs are closer at 5 minutes each
     eta_matrix = {
         201: {2: 25.0 / 60.0},
         202: {2: 5.0 / 60.0},
@@ -98,32 +87,27 @@ def test_swarm_prevention(app):
     )
 
     assert success is True
-    # המערכת חייבת לשלוח את הרותם הבודד כדי למזער את קנס 30,000 הנקודות של הסערים
-    assert rotem_far.status == 'EN_ROUTE', "המערכת רוקנה את התחנות במקום לשלוח כלי אחד חזק!"
+    # System must send the single ROTEM to minimize the deployment penalty of dispatching multiple SAARs
+    assert rotem_far.status == 'EN_ROUTE', "System depleted the stations instead of sending one strong resource!"
     assert saar_close_1.status == 'AVAILABLE'
 
 
 def test_starvation_prevention(app):
-    """
-    מבחן ההרעבה:
-    שתי שריפות (אחת גדולה, אחת קטנה). יש רק ROTEM אחד ו-SAAR אחד.
-    ה-ROTEM קרוב לשריפה הקטנה, אבל המערכת חייבת לשלוח אותו לגדולה
-    כדי לא "להרעיב" אותה ממשאבים שיכולים לסגור אותה.
-    """
+    """Tests that with two fires (one large, one small) and limited resources (one ROTEM, one SAAR), the system correctly assigns the ROTEM to the large fire despite it being closer to the small fire, preventing starvation of fires that require stronger resources."""
     commander = CommanderAgent()
 
-    # שריפה 3 ענקית, שריפה 4 קטנה
+    # Two fires with different demands: one large and one small
     huge_fire = FireEvent(id=3, demand_perimeter_m=200.0)
     small_fire = FireEvent(id=4, demand_perimeter_m=50.0)
 
     rotem_truck = Resource(id=301, resource_type='ROTEM', status='AVAILABLE')
     saar_truck = Resource(id=302, resource_type='SAAR', status='AVAILABLE')
 
-    # ה-ROTEM קרוב לשתיהן. ה-SAAR קרוב רק לגדולה.
-    # אלגוריתם "טיפש" ישלח את ה-ROTEM לקטנה כי הוא הכי מהיר לשם.
+    # ROTEM is close to both fires, SAAR is close only to the large one
+    # A naive algorithm would send ROTEM to the small fire because it's the fastest route
     eta_matrix = {
-        301: {3: 15.0 / 60.0, 4: 5.0 / 60.0},  # רותם: 15 דק לגדולה, 5 לקטנה
-        302: {3: 10.0 / 60.0, 4: 30.0 / 60.0}  # סער: 10 דק לגדולה, 30 לקטנה
+        301: {3: 15.0 / 60.0, 4: 5.0 / 60.0},  # ROTEM: 15 min to large fire, 5 min to small fire
+        302: {3: 10.0 / 60.0, 4: 30.0 / 60.0}  # SAAR: 10 min to large fire, 30 min to small fire
     }
 
     success = commander.step4_optimize_and_dispatch(
@@ -139,6 +123,6 @@ def test_starvation_prevention(app):
     )
 
     assert success is True
-    # המערכת הבינה שרק הרותם יכול לסגור את השריפה הגדולה, ולכן שידכה אותו אליה
-    assert rotem_truck.assigned_event_id == 3, "כישלון: המערכת הרעיבה את השריפה הגדולה!"
-    assert saar_truck.assigned_event_id == 4, "כישלון: המערכת לא שלחה את הסער לשריפה הקטנה!"
+    # Verify that only ROTEM can handle the large fire, so it must be assigned there
+    assert rotem_truck.assigned_event_id == 3, "Failure: The system starved the large fire!"
+    assert saar_truck.assigned_event_id == 4, "Failure: The system didn't send SAAR to the small fire!"

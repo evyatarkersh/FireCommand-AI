@@ -1,124 +1,131 @@
-/* App.css */
+/**
+ * FireCommand-AI Application Styles
+ * Main stylesheet for the tactical fire command and control interface.
+ */
+
+/* Root container - Full viewport layout with no constraints for maximum screen utilization */
 #root {
   width: 100vw;
   height: 100vh;
   margin: 0;
   padding: 0;
   max-width: none;
-  /* הסרנו את ה-text-align הגלובלי כדי שנוכל לשלוט בו פר רכיב */
+  /* Text alignment is controlled per component for RTL/LTR flexibility */
 }
 
+/* Global body styles - Uses modern system fonts optimized for command and control readability */
 body {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  /* פונט מודרני, נקי וקריא למערכות שו"ב */
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  letter-spacing: 0.3px; /* טיפה ריווח בין האותיות לקריאות גבוהה יותר */
+  letter-spacing: 0.3px;
 }
 
+/* Left sidebar container - Dark themed panel for fire event feed with RTL support for Hebrew text */
 .sidebar-container {
   width: 600px;
   background-color: #121212;
-  /* שינוי 1: הגבול עובר לימין כי הפאנל יהיה בשמאל */
-  border-right: 1px solid #333; 
+  border-right: 1px solid #333;
   display: flex;
   flex-direction: column;
   z-index: 10;
-  /* שינוי 2: מבטיח שהפאנל עצמו יתייחס לטקסט בעברית כברירת מחדל */
-  direction: rtl; 
+  /* Right-to-left direction for Hebrew text display */
+  direction: rtl;
 }
 
+/* Individual fire event card - Dark background with orange left border indicator */
 .event-card {
   background: #1e1e1e;
   margin: 10px;
   padding: 15px;
   border-radius: 8px;
-  /* נשאר עם border-right כי זה פס הצבע הכתום של הלהבה */
+  /* Orange vertical bar on the right side for visual fire event identification */
   border-right: 4px solid #ff4400;
   text-align: right;
 }
 
+/* Commander AI recommendation box - Green-themed panel with dashed border for LTR English content */
 .commander-recommendation {
   background: rgba(0, 255, 13, 0.05);
   border: 1px dashed #00ff0d;
   border-radius: 6px;
   padding: 12px;
   margin-top: 15px;
+  /* Left-to-right direction for English text */
   direction: ltr;
   text-align: left;
 }
 
+/* AI-generated summary text area - Optimized for LLM output with line break preservation and LTR text flow */
 .ai-summary {
-  color: #e2e2e2; /* לבן מעט רך יותר לעין */
-  font-size: 1rem; /* הגדלנו מעט לקריאות */
-  line-height: 1.6; /* רווח שורות גדול יותר - קריטי לאנגלית */
+  color: #e2e2e2;
+  font-size: 1rem;
+  line-height: 1.6;
   margin: 10px 0;
-  
-  /* שינוי 3: שומר על ירידות השורה שה-LLM שולח */
-  white-space: pre-wrap; 
-  
-  /* שינוי 4: בגלל שהדיווח באנגלית, אנחנו מכריחים את האזור הזה להיות משמאל לימין */
+  padding: 5px;
+  /* Preserves line breaks and formatting from LLM responses */
+  white-space: pre-wrap;
+  /* Forces left-to-right direction for English AI reports */
   direction: ltr;
   text-align: left;
 }
 
 .ai-summary {
     white-space: pre-wrap;
-    /* הוספת ריווח קטן כדי שהטקסט לא יידבק לקצוות */
-    padding: 5px; 
+    /* Adding small spacing so text doesn't stick to edges */
+    padding: 5px;
 }
 
+/* Status and category tags - Small pill-shaped badges with subtle styling */
 .tag {
   display: inline-block;
   background: #333;
   color: #aaa;
-  padding: 4px 10px; /* הגדלנו מעט את ה"בועה" */
+  padding: 4px 10px;
   border-radius: 4px;
   font-size: 0.8rem;
   margin-left: 5px;
   border: 1px solid #444;
 }
 
-/* App.css */
+/* ReactMarkdown typography overrides - Precise spacing control for AI-generated markdown content */
 
-/* --- תיקון עיצוב מתקדם ל-ReactMarkdown --- */
-
-/* 1. טיפול בפסקאות (שורות טקסט רגילות) */
-.ai-summary p, 
+/* Paragraph elements - Minimal bottom margin to prevent excessive whitespace */
+.ai-summary p,
 .commander-recommendation p {
-  margin: 0 0 6px 0 !important; /* משאיר רק רווח קטן בתחתית */
+  margin: 0 0 6px 0 !important;
   padding: 0 !important;
   line-height: 1.4;
 }
 
-/* 2. טיפול ברשימות (כאן בדרך כלל מסתתרים הרווחים הגדולים) */
-.ai-summary ul, 
+/* Unordered lists - Controlled spacing and indentation for bullet visibility */
+.ai-summary ul,
 .commander-recommendation ul {
   margin: 4px 0 8px 0 !important;
-  padding-left: 20px !important; /* הזחה שמאלה מדויקת כדי לראות את הנקודה */
+  padding-left: 20px !important;
 }
 
-/* 3. טיפול בשורות עצמן בתוך הרשימה */
-.ai-summary li, 
+/* List items - Condensed spacing between bullets for compact display */
+.ai-summary li,
 .commander-recommendation li {
-  margin-bottom: 4px !important; /* מצופף את הבולטים אחד לשני */
+  margin-bottom: 4px !important;
   line-height: 1.4;
 }
 
-/* 4. טיפול בטקסט מודגש (מבטל את קפיצות השורה) */
-.ai-summary strong, 
+/* Strong/bold text - Amber highlighting for general emphasis */
+.ai-summary strong,
 .commander-recommendation strong {
   color: #ffb700;
   font-weight: bold;
 }
 
-/* 5. שינוי צבע להדגשות ספציפיות של המפקד (למשל ETA) */
+/* Commander-specific bold text - Green highlighting for tactical emphasis like ETA */
 .commander-recommendation strong {
-  color: #00ff0d; /* שומר על הצבע הירוק באזור של המפקד */
+  color: #00ff0d;
 }
 
-/* עיצוב מודרני לפס הגלילה (Scrollbar) של הפיד */
+/* Custom scrollbar styling - Dark theme scrollbar matching the sidebar aesthetic */
 .sidebar-container ::-webkit-scrollbar {
   width: 8px;
 }
@@ -133,10 +140,10 @@ body {
   background: #555;
 }
 
-/* אפקט Hover לכרטיסים שירגישו לחיצים */
+/* Interactive hover effect - Smooth lift animation and shadow to indicate clickable cards */
 .event-card {
   transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
-  cursor: pointer; /* הופך את העכבר ליד לוחצת */
+  cursor: pointer;
 }
 
 .event-card:hover {
@@ -145,24 +152,24 @@ body {
   box-shadow: 0 4px 15px rgba(0,0,0,0.5);
 }
 
-/* המחלקה שתופעל כשהמשתמש לוחץ על אירוע במפה או בפיד */
+/* Focused event card state - Highlights selected card with green border when clicked from map or feed */
 .event-card.focused {
-  border-right: 6px solid #00ff0d; /* מדגיש את הפס בירוק או כל צבע שתבחר */
+  border-right: 6px solid #00ff0d;
   background-color: #2a2a2a;
 }
 
-/* מוחק רווחים מכל הרשימות בתוך כרטיסיית השריפה כולה */
+/* Event card list spacing - Removes excess spacing from markdown-rendered lists inside cards */
 .event-card ul {
   margin-top: 8px;
   margin-bottom: 0;
   padding-left: 20px;
 }
 
-/* הדריסה הקריטית: מוחק את הרווחים שהדפדפן דוחף לפסקאות בתוך רשימות Markdown */
+/* Critical override for markdown list paragraphs - Eliminates browser default spacing */
 .event-card li p {
   margin: 0 !important; 
 }
 
 .event-card li {
-  margin-bottom: 6px; /* רווח אחיד ועדין בין כל שורה */
+  margin-bottom: 6px;
 }

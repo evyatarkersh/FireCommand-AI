@@ -9,7 +9,10 @@ import ReactMarkdown from 'react-markdown';
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
-// פונקציית העזר שלנו - עכשיו היא בחוץ כדי לשמש את כולם!
+/**
+ * Extracts and parses JSON content from a string that may contain markdown code blocks or escaped characters.
+ * Takes a string input that might be wrapped in ```json``` blocks and returns the parsed JSON object, or null if parsing fails.
+ */
 const extractJSON = (str) => {
   if (typeof str !== 'string') return str;
   try {
@@ -21,11 +24,15 @@ const extractJSON = (str) => {
   }
 };
 
-// פונקציה שעוברת על הנתונים שהתקבלו (מ-Fetch או Socket) ומנקה את המחוזות
+/**
+ * Processes raw district summaries from the backend by cleaning and extracting nested JSON structures.
+ * Takes an object of district summaries, attempts to parse any JSON-stringified values, and returns a cleaned object with only the district_overview text.
+ */
 const processDistrictSummaries = (rawSummaries) => {
   const cleanSummaries = {};
   for (const [district, summary] of Object.entries(rawSummaries)) {
     let finalSummary = summary;
+    // If summary is a JSON string, attempt to extract the district_overview field
     if (typeof summary === 'string' && summary.trim().startsWith('{')) {
       const parsed = extractJSON(summary);
       if (parsed && parsed.district_overview) {
@@ -37,6 +44,10 @@ const processDistrictSummaries = (rawSummaries) => {
   return cleanSummaries;
 };
 
+/**
+ * Main application component that renders a real-time fire monitoring dashboard with an interactive map and live feed sidebar.
+ * Manages state for fire events, district summaries, fire stations, and map view, while establishing WebSocket connections for real-time updates.
+ */
 function App() {
   const [viewState, setViewState] = useState({
     longitude: 34.8516,
@@ -55,18 +66,19 @@ function App() {
   const uniqueDistricts = ["All", ...new Set(fires.map(f => f.district).filter(Boolean))];
 
   useEffect(() => {
-    // 1. טיפול בנתונים בטעינה ראשונית (Refresh)
+    // Load initial active fires data from backend
     fetch(`${BACKEND_URL}/active-fires`)
       .then(res => res.json())
       .then(data => {
         setFires(Array.isArray(data.fires) ? data.fires : []);
         if (data.summaries) {
-          // מנקים את הנתונים בטעינה הראשונית!
+          // Process and clean district summaries on initial load
           setDistrictSummaries(processDistrictSummaries(data.summaries));
         }
       })
       .catch(err => console.error("Error loading initial data:", err));
 
+    // Load fire stations data from backend
     fetch(`${BACKEND_URL}/stations`)
       .then(res => res.json())
       .then(data => {
@@ -77,10 +89,12 @@ function App() {
 
     const socket = io(BACKEND_URL);
 
+    // Handle new fire event notifications
     socket.on('new_fire', (fireData) => {
       console.log('🔥 new_fire received:', fireData);
       setFires(prev => {
         const idx = prev.findIndex(f => f.event_id === fireData.event_id);
+        // Update existing fire or add new one
         if (idx >= 0) {
           const updated = [...prev];
           updated[idx] = fireData;
@@ -90,6 +104,7 @@ function App() {
       });
     });
 
+    // Handle fire prediction updates
     socket.on('prediction_update', (updateData) => {
       console.log('🛡️ prediction_update received:', updateData);
       setFires(prev => prev.map(fire =>
@@ -103,16 +118,18 @@ function App() {
       ));
     });
 
-    // 2. טיפול בנתונים שמגיעים מהסוקט
+    // Handle commander updates for district strategy and fire allocations
     socket.on('commander_update', (payload) => {
       console.log(`👨‍✈️ Raw commander update received:`, payload);
       
       let data = payload;
 
+      // Parse string payloads as JSON
       if (typeof payload === 'string') {
         data = extractJSON(payload) || { district_overview: payload };
       }
 
+      // Extract nested district_overview if it's JSON-stringified
       if (data && typeof data.district_overview === 'string' && data.district_overview.trim().startsWith('{')) {
         const parsedInner = extractJSON(data.district_overview);
         if (parsedInner) {
@@ -120,6 +137,7 @@ function App() {
         }
       }
 
+      // Update district summaries with clean overview text
       if (data.district_overview && typeof data.district_overview === 'string' && !data.district_overview.trim().startsWith('{')) {
         setDistrictSummaries(prev => ({
           ...prev,
@@ -127,6 +145,7 @@ function App() {
         }));
       }
 
+      // Update fire tactical summaries based on allocation data
       if (data.fires_allocation && Array.isArray(data.fires_allocation)) {
         setFires(prevFires => prevFires.map(fire => {
           const allocationUpdate = data.fires_allocation.find(a => a.event_id === fire.event_id);
@@ -141,6 +160,10 @@ function App() {
     return () => socket.disconnect();
   }, []);
 
+  /**
+   * Handles click events on fire event cards in the sidebar.
+   * Focuses the clicked fire and animates the map to zoom to its location.
+   */
   const handleCardClick = (fire) => {
     setFocusedFireId(fire.event_id);
     setViewState({
@@ -152,6 +175,10 @@ function App() {
     });
   };
 
+  /**
+   * Handles click events on fire markers on the map.
+   * Prevents event propagation, focuses the fire, zooms to its location, and scrolls the corresponding card into view.
+   */
   const handleMarkerClick = (e, fire) => {
     e.originalEvent.stopPropagation();
     setFocusedFireId(fire.event_id);
@@ -163,18 +190,23 @@ function App() {
       transitionDuration: 1000
     });
 
+    // Scroll the corresponding card into view in the sidebar
     const cardElement = document.getElementById(`fire-card-${fire.event_id}`);
     if (cardElement) {
       cardElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   };
 
+  /**
+   * Handles the map load event by loading and registering the custom fire station icon image.
+   * Once the image is successfully loaded and added to the map, sets the iconLoaded state to true to enable rendering of station layers.
+   */
   const onMapLoad = (evt) => {
     const map = evt.target;
 
     map.loadImage('/fire-station.png', (error, image) => {
       if (error) {
-        console.error("❌ שגיאה בטעינת קובץ ה-PNG:", error);
+        console.error("❌ Error loading PNG file:", error);
         return;
       }
       if (!map.hasImage('station-icon')) {
@@ -286,7 +318,6 @@ function App() {
                   📍 <strong>Lat:</strong> {fire.lat.toFixed(3)}, <strong>Lon:</strong> {fire.lon.toFixed(3)} &nbsp;|&nbsp; <strong>Risk:</strong> {fire.risk || "MODERATE"}
                 </div>
 
-                {/* --- קופסת החיזוי (Forecast) המעודכנת --- */}
                 {fire.prediction_summary && (
                   <div style={{ 
                     marginTop: '12px', 

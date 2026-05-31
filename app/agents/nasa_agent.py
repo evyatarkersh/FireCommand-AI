@@ -1,26 +1,31 @@
-import os
-import requests
 import csv
-from io import StringIO
+import json
+import os
 from datetime import datetime
+from io import StringIO
+
+import requests
+from shapely.geometry import Point, shape
+
+from app.agents.open_weather_map_agent import WeatherService
 from app.extensions import db
 from app.models.nasa_fire import FireIncident
-from app.agents.open_weather_map_agent import WeatherService
-import json
-from shapely.geometry import Point, shape
 
 
 class NasaIngestionService:
+    """Service for ingesting and processing fire incident data from NASA FIRMS API. Fetches fire detections from multiple VIIRS satellite sources, filters them spatially within Israel's borders, and stores validated incidents in the database."""
+
     def __init__(self):
+        """Initializes the NASA ingestion service with API credentials, satellite data sources, weather service integration, and Israel's geographic boundary polygon for spatial filtering."""
         self.api_key = os.environ.get('NASA_FIRMS_KEY')
         self.base_url = "https://firms.modaps.eosdis.nasa.gov/api/area/csv"
-        # נשתמש ב-MODIS_SP לבדיקות היסטוריות, או VIIRS_..._NRT לזמן אמת
-        # כרגע נשאיר את הרשימה שלך (VIIRS)
+        # MODIS_SP available for historical data, VIIRS_NRT sources for real-time detection
         self.sources = ["VIIRS_SNPP_NRT", "VIIRS_NOAA20_NRT", "VIIRS_NOAA21_NRT"]
         self.weather_service = WeatherService()
         self.israel_polygon = self._load_israel_polygon()
 
     def _load_israel_polygon(self):
+        """Loads Israel's geographic boundary polygon from the GeoJSON file. Returns a Shapely shape object representing the country's borders for spatial filtering, or None if the file cannot be loaded."""
         current_dir = os.path.dirname(os.path.abspath(__file__))
         geojson_path = os.path.join(current_dir, '..', 'data', 'israel_borders.geojson')
         try:
@@ -32,6 +37,7 @@ class NasaIngestionService:
             return None
 
     def fetch_and_save_fires(self, days_back=1):
+        """Fetches fire detection data from NASA FIRMS API for the specified number of days back, processes each satellite source, filters points within Israel's borders, and saves new fire incidents to the database. Returns a dictionary with the operation status and count of newly added records."""
         if not self.api_key:
             return {"error": "No API Key"}
 
@@ -50,21 +56,22 @@ class NasaIngestionService:
                 reader = csv.DictReader(csv_data)
 
                 for row in reader:
-                    # 1. המרת נתונים (הוקדם)
+                    # Convert latitude and longitude to float for spatial operations
                     lat = float(row['latitude'])
                     lon = float(row['longitude'])
 
-                    # ---> הסינון המרחבי שנוסף <---
+                    # Apply spatial filtering to exclude points outside Israel's borders
                     if self.israel_polygon:
                         if not self.israel_polygon.contains(Point(lon, lat)):
-                            continue  # הנקודה בים או מחוץ לגבולות - דלג לשורה הבאה ב-CSV
+                            # Point is in sea or outside borders - skip to next CSV row
+                            continue
 
-                    # 2. המרת זמן (מתבצע רק לנקודות רלוונטיות)
+                    # Parse acquisition date and time into datetime object
                     date_str = row['acq_date']
                     time_str = row['acq_time'].zfill(4)
                     dt_object = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H%M")
 
-                    # 3. בדיקה אם קיים ב-DB (מניעת כפילות לוגית)
+                    # Check if this fire incident already exists in the database
                     exists = FireIncident.query.filter_by(
                         latitude=lat,
                         longitude=lon,
@@ -73,7 +80,7 @@ class NasaIngestionService:
                     ).first()
 
                     if not exists:
-                        # 4. הוספה רק אם חדש
+                        # Create and add new fire incident record
                         fire = FireIncident(
                             latitude=lat,
                             longitude=lon,
@@ -86,7 +93,7 @@ class NasaIngestionService:
                         db.session.add(fire)
                         new_records += 1
 
-                # שמירת השינויים (Commit) בסוף כל לוויין
+                # Commit all changes for the current satellite source
                 db.session.commit()
 
             except Exception as e:

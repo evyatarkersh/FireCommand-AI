@@ -5,46 +5,46 @@
   align-items: center;
   width: 30px;
   height: 30px;
-  /* קריטי: מונע מהמפה לחתוך את גלי ההדף כשהם גדלים */
-  overflow: visible !important; 
+  /* Critical: prevents the map from clipping the pulse rings when they expand */
+  overflow: visible !important;
 }
 
-/* עיצוב האימוג'י עצמו */
+/* Styling for the emoji itself */
 .fire-emoji {
   position: relative;
-  z-index: 2; /* מוודא שהאש תמיד מעל הגלים */
-  text-shadow: 0 0 5px rgba(0, 0, 0, 0.8); /* צל שחור כדי להבליט את האש על המפה */
-  /* נותן לאש עצמה אפקט "נשימה" עדין מאוד */
+  z-index: 2; /* ensures the fire is always above the rings */
+  text-shadow: 0 0 5px rgba(0, 0, 0, 0.8); /* black shadow to make the fire stand out on the map */
+  /* gives the fire itself a very subtle "breathing" effect */
   animation: fireBreathe 1s ease-in-out infinite alternate;
 }
 
-/* טבעת הגלים שיוצאת מהאש */
+/* The pulse ring emanating from the fire */
 .pulse-ring {
   position: absolute;
   width: 15px;
   height: 15px;
-  background-color: rgba(255, 81, 0, 0.5); /* צבע כתום-אדום שקוף */
+  background-color: rgba(255, 81, 0, 0.5); /* transparent orange-red color */
   border-radius: 50%;
-  z-index: 1; /* מאחורי האימוג'י */
-  /* האנימציה שמרחיבה ומעלימה את הטבעת */
+  z-index: 1; /* behind the emoji */
+  /* the animation that expands and fades out the ring */
   animation: emojiPulse 2s ease-out infinite;
-  pointer-events: none; /* שהטבעת לא תפריע ללחוץ על המפה */
+  pointer-events: none; /* so the ring doesn't interfere with clicking on the map */
 }
 
-/* אנימציית נשימה לאימוג'י */
+/* Breathing animation for the emoji */
 @keyframes fireBreathe {
   0% { transform: scale(1); }
   100% { transform: scale(1.15); }
 }
 
-/* אנימציית הפעימה (הגל) */
+/* Pulse animation (the wave) */
 @keyframes emojiPulse {
   0% {
     transform: scale(1);
     opacity: 1;
   }
   100% {
-    transform: scale(4); /* הגל מתרחב פי 4 מגודלו */
-    opacity: 0; /* ונעלם בהדרגה */
+    transform: scale(4); /* the wave expands 4x its size */
+    opacity: 0; /* and fades out gradually */
   }
 }
