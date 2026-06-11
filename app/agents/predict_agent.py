@@ -68,10 +68,10 @@ class FirePredictorAgent:
         """Calculates fire spread predictions for a single event using the Rothermel model with environmental data, applies time-decay for long-range forecasts, and updates the event with prediction polygon, risk level, and LLM-generated summary text."""
         try:
             # Retrieve environmental data with IMS as priority and OWM as fallback
-            wind_speed = event.ims_wind_speed if event.ims_wind_speed is not None else (event.owm_wind_speed or 0)
-            wind_dir = event.ims_wind_dir if event.ims_wind_dir is not None else (event.owm_wind_deg or 0)
-            temp = event.ims_temp if event.ims_temp is not None else (event.owm_temperature or 25)
-            humidity = event.ims_humidity if event.ims_humidity is not None else (event.owm_humidity or 50)
+            wind_speed = event.ims_wind_speed if (event.ims_wind_speed is not None and event.ims_wind_speed >= 0) else (event.owm_wind_speed or 0)
+            wind_dir = event.ims_wind_dir if (event.ims_wind_dir is not None and event.ims_wind_dir >= 0) else (event.owm_wind_deg or 0)
+            temp = event.ims_temp if (event.ims_temp is not None and event.ims_temp > -100) else (event.owm_temperature or 25)
+            humidity = event.ims_humidity if (event.ims_humidity is not None and event.ims_humidity >= 0) else (event.owm_humidity or 50)
 
             rain = event.ims_rain or 0.0
             gust = event.ims_wind_gust or wind_speed
