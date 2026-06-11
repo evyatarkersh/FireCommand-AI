@@ -29,7 +29,7 @@ class LLMAgent:
         self.gemini_key = os.getenv("GEMINI_API_KEY")
         if self.gemini_key:
             genai.configure(api_key=self.gemini_key)
-            self.gemini_model = genai.GenerativeModel('gemini-2.5-pro')
+            self.gemini_model = genai.GenerativeModel('gemini-3.1-flash-lite')
         else:
             self.gemini_model = None
 
@@ -76,7 +76,7 @@ class LLMAgent:
         # Step 2: Gemini fallback (if Groq completely failed)
         if self.gemini_model:
             try:
-                print(f"      🚨 {context_name}: Groq exhausted. Trying Gemini 1.5 Pro...")
+                print(f"      🚨 {context_name}: Groq exhausted. Trying Gemini ")
 
                 generation_config = {"temperature": 0.1}
                 if is_json:
@@ -86,7 +86,7 @@ class LLMAgent:
                     prompt,
                     generation_config=generation_config
                 )
-                print(f"      🟢 {context_name}: Success using Gemini 1.5 Pro")
+                print(f"      🟢 {context_name}: Success using Gemini ")
                 return response.text
             except Exception as e:
                 print(f"      ❌ {context_name}: Gemini fallback failed: {e}")
