@@ -52,7 +52,7 @@ class LLMAgent:
         # Step 1: Try OpenRouter (Primary)
         if self.openrouter_client:
             fallback_models = [
-                "openrouter/auto-large:free", "openrouter/auto:free"
+                "openrouter/free"
             ]
             or_kwargs = {"temperature": 0.1}
             if is_json:
