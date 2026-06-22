@@ -64,17 +64,17 @@ class LLMAgent:
 
             for model_name in target_models:  # <--- שים לב שזה שונה מ-groq_strong_models
                 try:
-                        print(f"      🔄 {context_name}: Trying Groq Key #{key_index + 1} ({model_name})...")
-                        chat_completion = client.chat.completions.create(
-                            messages=[ChatCompletionUserMessageParam(role="user", content=prompt)],
-                            model=model_name,
-                            **kwargs
-                        )
-                        print(f"      🟢 {context_name}: Success using Groq")
-                        return chat_completion.choices[0].message.content
-                    except Exception as e:
-                        print(f"      ⚠️ {context_name}: Error with Groq {model_name}: {e}")
-                        continue
+                    print(f"      🔄 {context_name}: Trying Groq Key #{key_index + 1} ({model_name})...")
+                    chat_completion = client.chat.completions.create(
+                        messages=[ChatCompletionUserMessageParam(role="user", content=prompt)],
+                        model=model_name,
+                        **kwargs
+                    )
+                    print(f"      🟢 {context_name}: Success using Groq")
+                    return chat_completion.choices[0].message.content
+                except Exception as e:
+                    print(f"      ⚠️ {context_name}: Error with Groq {model_name}: {e}")
+                    continue
 
         # Step 3: Try Gemini (Final Fallback)
         if self.gemini_model:
