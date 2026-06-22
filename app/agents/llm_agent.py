@@ -52,8 +52,10 @@ class LLMAgent:
         # Step 1: Try OpenRouter (Primary)
         if self.openrouter_client:
             fallback_models = [
-                "meta-llama/llama-3-8b-instruct:free",
-                "mistralai/mistral-7b-instruct:free"
+                "meta-llama/llama-3.3-70b-instruct:free",
+                "nousresearch/hermes-3-llama-3.1-405b:free",
+                "qwen/qwen-3-next-80b-a3b-instruct:free",
+                "google/gemma-4-26b-a4b-it:free"
             ]
             or_kwargs = {"temperature": 0.1}
             if is_json:
