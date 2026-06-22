@@ -32,7 +32,7 @@ class LLMAgent:
         else:
             self.gemini_model = None
 
-        self.is_active = self.openrouter_key is not None or len(self.groq_keys) > 0 or self.gemini_key is not None
+        self.is_active = len(self.groq_keys) > 0 or self.gemini_key is not None
         if not self.is_active:
             print("❌ LLM Agent Error: No API keys found for OpenRouter, Groq, or Gemini.")
 
