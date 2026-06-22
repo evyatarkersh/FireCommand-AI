@@ -26,10 +26,10 @@ class LLMAgent:
         else:
             self.openrouter_client = None
 
-        # 2. Initialize Groq (First Fallback) - Reduced to 1-2 keys!
+        # 2. Initialize Groq (First Fallback)
         self.groq_keys = [
             os.getenv("GROQ_API_KEY"),
-            os.getenv("GROQ_API_KEY_1")  # You can remove this line if you only want 1 key
+            os.getenv("GROQ_API_KEY_1")
         ]
         self.groq_keys = [k for k in self.groq_keys if k]
 
