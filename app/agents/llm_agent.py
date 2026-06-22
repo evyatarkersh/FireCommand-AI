@@ -4,6 +4,7 @@ import os
 import google.generativeai as genai
 from groq import Groq
 from groq.types.chat import ChatCompletionUserMessageParam
+from openai import OpenAI
 
 
 class LLMAgent:
@@ -15,17 +16,24 @@ class LLMAgent:
         """
         Initializes the LLM Agent by loading multiple Groq API keys and configuring Gemini as a fallback, ensuring high availability for critical fire management operations.
         """
-        # Load all available Groq API keys (both regular and numbered)
+        # 1. Initialize OpenRouter (Primary Model)
+        self.openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        if self.openrouter_key:
+            self.openrouter_client = OpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=self.openrouter_key,
+            )
+        else:
+            self.openrouter_client = None
+
+        # 2. Initialize Groq (First Fallback)
         self.groq_keys = [
             os.getenv("GROQ_API_KEY"),
-            os.getenv("GROQ_API_KEY_1"),
-            os.getenv("GROQ_API_KEY_2"),
-            os.getenv("GROQ_API_KEY_3")
+            os.getenv("GROQ_API_KEY_1")
         ]
-        # Filter out empty values from the list
         self.groq_keys = [k for k in self.groq_keys if k]
 
-        # Initialize Gemini (Google's final and powerful fallback model)
+        # 3. Initialize Gemini (Final Fallback)
         self.gemini_key = os.getenv("GEMINI_API_KEY")
         if self.gemini_key:
             genai.configure(api_key=self.gemini_key)
@@ -33,51 +41,77 @@ class LLMAgent:
         else:
             self.gemini_model = None
 
-        self.is_active = len(self.groq_keys) > 0 or self.gemini_key is not None
+        self.is_active = self.openrouter_key is not None or len(self.groq_keys) > 0 or self.gemini_key is not None
         if not self.is_active:
-            print("❌ LLM Agent Error: No API keys found for Groq or Gemini.")
+            print("❌ LLM Agent Error: No API keys found for OpenRouter, Groq, or Gemini.")
 
     def _call_llm_with_fallback(self, prompt, context_name="LLM", is_json=False):
         """
         Attempts to execute a prompt across multiple Groq API keys using high-capacity models, falling back to Gemini if all Groq attempts fail, and returns the generated text response or error message.
         """
-        # Only the strongest models for reliable tactical decisions
-        groq_strong_models = [
-            "llama-3.3-70b-versatile",
-            "openai/gpt-oss-120b"
-        ]
+        # Step 1: Try OpenRouter (Primary)
+        if self.openrouter_client:
+            fallback_models = [
+                "meta-llama/llama-3-8b-instruct:free",
+                "mistralai/mistral-7b-instruct:free"
+            ]
+            or_kwargs = {"temperature": 0.1}
+            if is_json:
+                or_kwargs["response_format"] = {"type": "json_object"}
 
-        kwargs = {"temperature": 0.1}
-        if is_json:
-            kwargs["response_format"] = {"type": "json_object"}
-
-        # Step 1: Try all Groq API keys and models
-        for key_index, api_key in enumerate(self.groq_keys):
-            client = Groq(api_key=api_key)
-
-            for model_name in groq_strong_models:
+            for model_name in fallback_models:
                 try:
-                    print(f"      🔄 {context_name}: Trying Groq Key #{key_index + 1} with model {model_name}...")
-
-                    chat_completion = client.chat.completions.create(
-                        messages=[ChatCompletionUserMessageParam(role="user", content=prompt)],
+                    print(f"      🔄 {context_name}: Trying OpenRouter ({model_name})...")
+                    response = self.openrouter_client.chat.completions.create(
                         model=model_name,
-                        **kwargs
+                        messages=[{"role": "user", "content": prompt}],
+                        **or_kwargs
                     )
-
-                    print(f"      🟢 {context_name}: Success using Groq Key #{key_index + 1} ({model_name})")
-                    return chat_completion.choices[0].message.content
-
+                    print(f"      🟢 {context_name}: Success using OpenRouter")
+                    return response.choices[0].message.content
                 except Exception as e:
-                    # If failed, silently move to the next option
-                    print(f"      ⚠️ {context_name}: Error with {model_name}: {e}")
+                    print(f"      ⚠️ {context_name}: Error with OpenRouter {model_name}: {e}")
+                    if is_json and "response_format" in str(e):
+                        try:
+                            print(f"      🔄 {context_name}: Retrying without strict JSON mode...")
+                            response = self.openrouter_client.chat.completions.create(
+                                model=model_name,
+                                messages=[{"role": "user", "content": prompt}],
+                                temperature=0.1
+                            )
+                            return response.choices[0].message.content
+                        except:
+                            pass
                     continue
 
-        # Step 2: Gemini fallback (if Groq completely failed)
+        # Step 2: Try Groq (First Fallback)
+        if self.groq_keys:
+            print(f"      🚨 {context_name}: OpenRouter exhausted. Trying Groq...")
+            groq_strong_models = ["llama-3.3-70b-versatile", "openai/gpt-oss-120b"]
+            kwargs = {"temperature": 0.1}
+            if is_json:
+                kwargs["response_format"] = {"type": "json_object"}
+
+            for key_index, api_key in enumerate(self.groq_keys):
+                client = Groq(api_key=api_key)
+                for model_name in groq_strong_models:
+                    try:
+                        print(f"      🔄 {context_name}: Trying Groq Key #{key_index + 1} ({model_name})...")
+                        chat_completion = client.chat.completions.create(
+                            messages=[ChatCompletionUserMessageParam(role="user", content=prompt)],
+                            model=model_name,
+                            **kwargs
+                        )
+                        print(f"      🟢 {context_name}: Success using Groq")
+                        return chat_completion.choices[0].message.content
+                    except Exception as e:
+                        print(f"      ⚠️ {context_name}: Error with Groq {model_name}: {e}")
+                        continue
+
+        # Step 3: Try Gemini (Final Fallback)
         if self.gemini_model:
             try:
-                print(f"      🚨 {context_name}: Groq exhausted. Trying Gemini ")
-
+                print(f"      🚨 {context_name}: Groq exhausted. Trying Gemini...")
                 generation_config = {"temperature": 0.1}
                 if is_json:
                     generation_config["response_mime_type"] = "application/json"
@@ -86,12 +120,12 @@ class LLMAgent:
                     prompt,
                     generation_config=generation_config
                 )
-                print(f"      🟢 {context_name}: Success using Gemini ")
+                print(f"      🟢 {context_name}: Success using Gemini")
                 return response.text
             except Exception as e:
                 print(f"      ❌ {context_name}: Gemini fallback failed: {e}")
 
-        # Step 3: Everything failed
+        # Step 4: Everything failed
         error_text = f"⚠️ Error: LLM completely unavailable for {context_name}."
         print(error_text)
         return '{"error": "API Blocked"}' if is_json else error_text
