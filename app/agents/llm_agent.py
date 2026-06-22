@@ -16,6 +16,7 @@ class LLMAgent:
         """
         Initializes the LLM Agent by loading multiple Groq API keys and configuring Gemini as a fallback, ensuring high availability for critical fire management operations.
         """
+        # 1. Initialize OpenRouter (Primary Model)
         self.openrouter_key = os.getenv("OPENROUTER_API_KEY")
         if self.openrouter_key:
             self.openrouter_client = OpenAI(
