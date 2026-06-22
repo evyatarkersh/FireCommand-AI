@@ -194,7 +194,6 @@ class LLMAgent:
         """
 
         # Use the fallback mechanism with Groq
-        response_text = self._call_llm_with_fallback(prompt, context_name=f"Dispatch {district_name}", is_json=True,
-                                                     task_type="dispatch")
+        response_text = self._call_llm_with_fallback(prompt, context_name=f"Dispatch {district_name}", is_json=True, task_type="dispatch")
 
         return response_text
