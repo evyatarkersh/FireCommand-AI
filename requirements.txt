@@ -68,3 +68,4 @@ apscheduler
 redis
 flask-socketio[redis]
 google-generativeai
+openai
