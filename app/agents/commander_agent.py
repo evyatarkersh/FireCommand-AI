@@ -595,12 +595,13 @@ class CommanderAgent:
 
                 for res in math_survivors:
                     # To estimate potential, assume vehicle goes to fire it reaches fastest
-                    best_eta = min(eta_matrix[res.id][f.id] for f in unsolved_fires)
+                    best_fire = min(unsolved_fires, key=lambda f: eta_matrix[res.id][f.id])
+                    best_eta = eta_matrix[res.id][best_fire.id]
                     net_time = target_hours - best_eta
 
                     if net_time > 0:
-                        # Calculate hourly production (assume first fire as representative SDI for estimate)
-                        hourly_yield = self.get_actual_yield(res.resource_type, unsolved_fires[0])
+                        # Calculate hourly production
+                        hourly_yield = self.get_actual_yield(res.resource_type, best_fire)
                         total_potential_yield += hourly_yield * net_time
 
                 if total_potential_yield >= total_district_demand:
