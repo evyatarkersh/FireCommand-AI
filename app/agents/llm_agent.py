@@ -44,14 +44,14 @@ class LLMAgent:
         if task_type == "prediction":
             # High Volume / Low Complexity
             target_models = [
-                "llama-3.1-8b-instant",
-                "qwen/qwen3-32b"
+                "openai/gpt-oss-20b",
+                "groq/compound-mini"
             ]
         else:
             # Low Volume / High Complexity (Dispatch JSON)
             target_models = [
-                "llama-3.3-70b-versatile",
-                "openai/gpt-oss-120b"
+                "openai/gpt-oss-120b",
+                "groq/compound"
             ]
 
         kwargs = {"temperature": 0.1}
